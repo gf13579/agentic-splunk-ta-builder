@@ -214,3 +214,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Custom - added as part of agentic-splunk-ta-builder
+output/
+*.tgz
+*.tar.gz
+*.spl
+validation*.html
+!app.manifest
+
+# Allow package/lib/requirements.txt despite ignoring lib/
+!/package/lib/
+/package/lib/*
+!/package/lib/requirements.txt
