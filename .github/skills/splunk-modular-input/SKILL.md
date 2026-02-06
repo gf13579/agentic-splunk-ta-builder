@@ -1,6 +1,6 @@
 ---
 name: splunk-modular-input
-description: Guide for creating Python code for Splunk modular inputs in UCC-based add-ons
+description: Implements Python data collection scripts for Splunk modular inputs in UCC-based add-ons. Part of TA implementation workflow - creates API client code with checkpoint management for tracking collected data, handles event formatting and writing to Splunk, implements error handling, authentication, rate limiting, and pagination. Generates package/bin/*.py files referenced in globalConfig.json.
 ---
 
 # Skill Instructions

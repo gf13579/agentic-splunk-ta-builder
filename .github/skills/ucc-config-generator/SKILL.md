@@ -1,6 +1,6 @@
 ---
 name: ucc-config-generator
-description: Guide for generating UCC-based Splunk TA configurations from API documentation
+description: Creates UCC-based Splunk TA project structure and configuration from API documentation. First implementation step in TA creation workflow - analyzes API to determine components (scripted inputs, custom commands, alert actions), generates globalConfig.json, creates directory structure, and sets up build system. Use when creating new Splunk add-on or generating UCC framework structure.
 ---
 
 # Skill Instructions
@@ -83,20 +83,38 @@ This agent analyzes API documentation to determine the appropriate Splunk TA com
                 --addon-input-name myservice_input
 ```
 
-6. **Navigate to the generated structure:**
+6. **Understand the generated structure:**
 ```
    TA-myservice/
    └── package/
-       ├── globalConfig.json    # This is the key file to customize
-       ├── bin/
-       └── README/
+       ├── globalConfig.json    # Core UCC configuration - CUSTOMIZE THIS
+       ├── bin/                 # Python scripts go here
+       │   └── myservice_input.py  # Main data collection script
+       ├── README/              # Configuration specs
+       │   └── inputs.conf.spec
+       ├── static/              # App icons (place generated icons here)
+       └── lib/                 # Additional Python libraries (if needed)
+```
+
+After running `ucc-gen build`, the output structure will be:
+```
+   TA-myservice/
+   └── output/
+       └── TA-myservice/        # Built, installable add-on
+           ├── bin/             # Generated REST handlers + your scripts
+           ├── default/         # Generated .conf files
+           ├── appserver/       # Generated UI components
+           │   ├── static/      # App icons copied here
+           │   └── templates/   # Generated HTML templates
+           ├── lib/             # UCC framework + dependencies
+           └── metadata/        # Generated metadata
 ```
 
 ### Phase 4: Configuration Development
 7. **Edit `globalConfig.json`** to define:
    - **Configuration page** (account credentials, global settings)
    - **Input definitions** (data collection parameters)
-   - **Custom commands** (if applicable)
+   - **Custom commands** (if applicable) - by adding customSearchCommand entries
    - **Alert actions** (if applicable)
 
 8. **Write Python helper modules** in `package/bin/`:
@@ -112,27 +130,39 @@ This agent analyzes API documentation to determine the appropriate Splunk TA com
    - Manual smoke test checklist
 
 10. **Build the TA:**
-```bash
+    ```bash
     ucc-gen build --source TA-myservice/package --ta-version 1.0.0
-```
+    ```
+    This creates `TA-myservice/output/TA-myservice/` with the built add-on
 
-11. **Validate with AppInspect:**
-    - Check for common compliance issues
-    - Ensure proper licensing, metadata, and file structure
-    - Fix any blocking or critical findings
+11. **Generate app icons:**
+    - Use the `generate-splunk-app-icons` skill to create the required icon set
+    - Ask the user for 1-2 characters to display on the icon (e.g., "TI", "DB", "ML")
+    - Optionally customize colors and border, or use Splunk defaults
+    - Icons will be placed in `TA-myservice/package/static` and copied to `output/TA-myservice/static/` if the output directory exists
+    - Creates: `appIcon.png`, `appIcon_2x.png`, `appIconAlt.png`, `appIconAlt_2x.png`
 
-### Phase 6: Documentation & Packaging
-12. **Generate documentation:**
-    - README.md with setup instructions
-    - Configuration guide
-    - Troubleshooting section
-
-13. **Package for distribution:**
-```bash
+12. **Package for distribution:**
+    ```bash
     ucc-gen package --path output/TA-myservice
-```
+    ```
+    This creates a `.tar.gz` file in the current directory
 
-14. **Deliver to developer:**
+13. **Validate with AppInspect:**
+    - Use the `splunk-appinspect` skill to validate the packaged `.tar.gz` file
+    - The skill will submit the package to Splunk's AppInspect API
+    - Review validation results for failures, errors, warnings, and manual checks
+    - Fix any blocking or critical findings
+    - Re-run validation until all issues are resolved
+
+### Phase 6: Documentation & Delivery
+14. **Generate documentation:**
+    - README.md with setup instructions
+    - Configuration guide showing how to add accounts and configure inputs
+    - Troubleshooting section with common issues
+    - Example SPL queries for testing data collection
+
+15. **Deliver to developer:**
     - Packaged `.tar.gz` file
     - Installation instructions
     - Configuration examples
@@ -167,9 +197,108 @@ This agent analyzes API documentation to determine the appropriate Splunk TA com
 ### `globalConfig.json`
 This is the **heart** of the UCC-based TA. It defines:
 - **meta:** Add-on name, version, description, author
-- **pages/configuration:** Account setup, proxy, logging
+- **pages/configuration:** Account setup, proxy, logging settings
 - **pages/inputs:** Input configuration UI and parameters
 - **alerts:** Alert action definitions (if any)
+- **customSearchCommand:** Custom search command definitions (if any)
+
+**Key sections to configure:**
+
+1. **Meta section** - Basic add-on information:
+   ```json
+   "meta": {
+     "name": "TA-myservice",
+     "displayName": "My Service Add-on for Splunk",
+     "version": "1.0.0",
+     "apiVersion": "3.0.0",
+     "restRoot": "ta_myservice"
+   }
+   ```
+
+2. **Configuration page** - Define account authentication:
+   ```json
+   "pages": {
+     "configuration": {
+       "title": "Configuration",
+       "tabs": [
+         {
+           "name": "account",
+           "title": "Account",
+           "entity": [
+             {
+               "type": "text",
+               "field": "name",
+               "label": "Account Name"
+             },
+             {
+               "type": "text",
+               "field": "api_url",
+               "label": "API URL"
+             },
+             {
+               "type": "text",
+               "field": "api_key",
+               "label": "API Key",
+               "encrypted": true
+             }
+           ]
+         }
+       ]
+     }
+   }
+   ```
+
+3. **Input page** - Define data collection inputs:
+   ```json
+   "inputs": {
+     "title": "Inputs",
+     "services": [
+       {
+         "name": "myservice_events",
+         "title": "My Service Events",
+         "entity": [
+           {
+             "type": "singleSelect",
+             "field": "account",
+             "label": "Account",
+             "required": true,
+             "options": {
+               "referenceName": "account"
+             }
+           },
+           {
+             "type": "text",
+             "field": "name",
+             "label": "Input Name",
+             "required": true
+           },
+           {
+             "type": "text",
+             "field": "interval",
+             "label": "Interval (seconds)",
+             "defaultValue": "300"
+           }
+         ]
+       }
+     ]
+   }
+   ```
+
+4. **Custom command** (if needed):
+   ```json
+   "customSearchCommand": {
+     "myservice_lookup": {
+       "command": "myservicelookup",
+       "description": "Lookup data from My Service API",
+       "streaming": false,
+       "outputfields": [
+         {"name": "id"},
+         {"name": "name"},
+         {"name": "status"}
+       ]
+     }
+   }
+   ```
 
 ### `package/bin/<input_name>.py`
 The modular input script that:
@@ -179,11 +308,15 @@ The modular input script that:
 - Handles checkpointing (saves last successful fetch)
 - Implements error handling and logging
 
+**Note:** For detailed Python implementation guidance, use the `splunk-modular-input` skill.
+
 ### `package/bin/<command_name>.py`
 Custom command that:
 - Reads SPL arguments
 - Calls the API
 - Returns results to the Splunk search pipeline
+
+**Implementation note:** Custom commands should inherit from Splunk's `GeneratingCommand` or `StreamingCommand` base classes.
 
 ## Common Pitfalls to Avoid
 
