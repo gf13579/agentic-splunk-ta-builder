@@ -1,4 +1,9 @@
-# Splunk Modular Inputs Skill
+---
+name: splunk-modular-input
+description: Guide for creating Python code for Splunk modular inputs in UCC-based add-ons
+---
+
+# Skill Instructions
 
 ## When to Use This Skill
 Use this skill when writing Python code for Splunk modular inputs in UCC-based add-ons. This covers the actual data collection scripts that live in `package/bin/` and are responsible for:

@@ -227,3 +227,8 @@ validation*.html
 !/package/lib/
 /package/lib/*
 !/package/lib/requirements.txt
+appinspect_report_*
+.DS_Store
+
+# temp hack
+TA-Threat-intel/

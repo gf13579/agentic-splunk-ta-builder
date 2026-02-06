@@ -1,0 +1,133 @@
+{
+  "request_id": "1234abcd-5678-efgh-9012-ijklmnopqrst",
+  "summary": {
+    "error": 0,
+    "failure": 2,
+    "warning": 5,
+    "success": 145,
+    "manual_check": 1,
+    "not_applicable": 50,
+    "skipped": 0
+  },
+  "reports": [
+    {
+      "app_name": "my_splunk_app",
+      "app_version": "1.0.0",
+      "app_author": "Your Name",
+      "app_description": "My awesome Splunk app",
+      "run_parameters": {
+        "splunk_version": "9.0",
+        "included_tags": [],
+        "excluded_tags": []
+      },
+      "groups": [
+        {
+          "name": "packaging_standards",
+          "description": "Packaging standards checks",
+          "checks": [
+            {
+              "name": "check_app_conf_exists",
+              "description": "Verify app.conf exists",
+              "result": "success",
+              "messages": []
+            },
+            {
+              "name": "check_readme_exists",
+              "description": "Verify README file exists",
+              "result": "failure",
+              "messages": [
+                {
+                  "message": "README file not found in app root directory. A README file (README.txt, README.md, or README) is required.",
+                  "message_filename": null,
+                  "message_line": null,
+                  "code": "MISSING_README",
+                  "result": "failure"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "licensing",
+          "description": "License file checks",
+          "checks": [
+            {
+              "name": "check_license_file",
+              "description": "Verify LICENSE or COPYING file exists",
+              "result": "failure",
+              "messages": [
+                {
+                  "message": "LICENSE or COPYING file not found in app root",
+                  "message_filename": null,
+                  "message_line": null,
+                  "code": "MISSING_LICENSE",
+                  "result": "failure"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "appapproval",
+          "description": "App approval criteria",
+          "checks": [
+            {
+              "name": "check_app_description",
+              "description": "Verify app has adequate description",
+              "result": "warning",
+              "messages": [
+                {
+                  "message": "App description in app.conf should be more detailed (minimum 50 characters recommended)",
+                  "message_filename": "default/app.conf",
+                  "message_line": 5,
+                  "code": "SHORT_DESCRIPTION",
+                  "result": "warning"
+                }
+              ]
+            },
+            {
+              "name": "check_deprecated_conf_settings",
+              "description": "Check for deprecated configuration settings",
+              "result": "warning",
+              "messages": [
+                {
+                  "message": "Deprecated setting 'enableSched' found in savedsearches.conf",
+                  "message_filename": "default/savedsearches.conf",
+                  "message_line": 12,
+                  "code": "DEPRECATED_SETTING",
+                  "result": "warning"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "security",
+          "description": "Security best practices",
+          "checks": [
+            {
+              "name": "check_for_passwords",
+              "description": "Check for hardcoded passwords",
+              "result": "manual_check",
+              "messages": [
+                {
+                  "message": "Potential password or credential found in config file. Please verify this is not a hardcoded credential.",
+                  "message_filename": "default/inputs.conf",
+                  "message_line": 8,
+                  "code": "POTENTIAL_PASSWORD",
+                  "result": "manual_check"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "rel": "self",
+      "href": "https://appinspect.splunk.com/v1/app/report/1234abcd-5678-efgh-9012-ijklmnopqrst"
+    }
+  ]
+}

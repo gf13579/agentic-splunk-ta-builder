@@ -1,7 +1,18 @@
-# Splunk Technology Add-on (TA) Development Agent
+---
+name: ucc-config-generator
+description: Guide for generating UCC-based Splunk TA configurations from API documentation
+---
 
-## Goal
-Generate production-ready Splunk Technology Add-ons (TAs) using the UCC (Universal Configuration Console) framework from API documentation or specifications. The TA should be ready to pass AppInspect validation and be published to Splunkbase.
+# Skill Instructions
+
+## When to Use This Skill
+
+Use this skill when you need to:
+- Generate a complete Splunk Technology Add-on (TA) using the Universal Configuration Console (UCC) framework
+- Create modular inputs, custom commands, and alert actions based on API documentation
+- Build a TA that is ready for AppInspect validation and Splunkbase submission
+- Automate the creation of `globalConfig.json` and related files based on API specifications
+
 
 ## Overview
 This agent analyzes API documentation to determine the appropriate Splunk TA components (scripted inputs, custom commands, alert actions, etc.) and generates a complete, working add-on using UCC's configuration-as-code approach.
