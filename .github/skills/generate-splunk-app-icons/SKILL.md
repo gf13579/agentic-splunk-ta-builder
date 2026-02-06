@@ -44,16 +44,16 @@ Use `uv run --with pillow` to execute the script with automatic dependency manag
 
 ```bash
 # Basic usage with required text parameter
-uv run --with pillow .github/skills/splunk-icon-gen/generate_icon.py --text "ML"
+uv run --with pillow .github/skills/generate-splunk-app-icons/generate_icon.py --text "ML"
 
 # With custom colors
-uv run --with pillow .github/skills/splunk-icon-gen/generate_icon.py --text "CI" --bg "#2C3E50" --fg "#ECF0F1"
+uv run --with pillow .github/skills/generate-splunk-app-icons/generate_icon.py --text "CI" --bg "#2C3E50" --fg "#ECF0F1"
 
 # Without border
-uv run --with pillow .github/skills/splunk-icon-gen/generate_icon.py --text "DB" --no-border
+uv run --with pillow .github/skills/generate-splunk-app-icons/generate_icon.py --text "DB" --no-border
 
 # Custom border width
-uv run --with pillow .github/skills/splunk-icon-gen/generate_icon.py --text "AP" --border-width 12
+uv run --with pillow .github/skills/generate-splunk-app-icons/generate_icon.py --text "AP" --border-width 12
 ```
 
 ## When to Use This Skill

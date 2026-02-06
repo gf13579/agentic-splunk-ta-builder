@@ -13,6 +13,17 @@ Use this skill when you need to:
 - Build a TA that is ready for AppInspect validation and Splunkbase submission
 - Automate the creation of `globalConfig.json` and related files based on API specifications
 
+## Critical Instructions for AI Agent
+
+**ALWAYS gather required metadata interactively if not provided:**
+
+1. **Check** if the user has provided all required metadata (add-on name, display name)
+2. **If any values are missing**, use the `ask_questions` tool to prompt the user
+3. **Suggest intelligent defaults** based on context (API name, service name, etc.) and mark them as recommended
+4. **Example:** If user says "create a TA for Cisco Umbrella" but doesn't provide metadata:
+   - Suggest: Add-on name: `TA-cisco-umbrella` (recommended)
+   - Suggest: Display name: `Cisco Umbrella Add-on for Splunk` (recommended)
+5. **Do NOT proceed** with `ucc-gen init` until all required metadata is confirmed
 
 ## Overview
 This agent analyzes API documentation to determine the appropriate Splunk TA components (scripted inputs, custom commands, alert actions, etc.) and generates a complete, working add-on using UCC's configuration-as-code approach.
@@ -24,8 +35,6 @@ This agent analyzes API documentation to determine the appropriate Splunk TA com
 - Add-on metadata:
   - Add-on name (e.g., `TA-myservice`)
   - Display name (e.g., `My Service Add-on for Splunk`)
-  - Brief description of the service/API
-  - Author information
 
 **Optional Input:**
 - Authentication details (API key, OAuth, basic auth patterns)
@@ -51,6 +60,24 @@ This agent analyzes API documentation to determine the appropriate Splunk TA com
    - Installable `.tar.gz` archive (via `ucc-gen package`)
 
 ## High-Level Workflow
+
+### Phase 0: Gather Required Metadata
+**Before proceeding with implementation, ensure all required metadata is available.**
+
+1. **Check if the user provided:**
+   - Add-on name (e.g., `TA-myservice`)
+   - Display name (e.g., `My Service Add-on for Splunk`)
+
+2. **If any required metadata is missing:**
+   - **IMPORTANT:** Use the `ask_questions` tool to prompt the user for missing values
+   - Suggest intelligent defaults based on the API documentation or service name
+   - Present suggested values as recommended options for user confirmation
+
+3. **Infer add-on name and display name:**
+   - Infer add-on name from service name (e.g., "Cisco Umbrella" → suggest `TA-cisco-umbrella`)
+   - Infer display name from service name (e.g., "Cisco Umbrella" → suggest `Cisco Umbrella Add-on for Splunk`)
+
+4. **Only proceed to Phase 1 after all required metadata is confirmed.**
 
 ### Phase 1: API Analysis
 1. **Read and understand** the provided API documentation
@@ -119,7 +146,8 @@ After running `ucc-gen build`, the output structure will be:
 7. **Edit `globalConfig.json`** to define:
    - **Configuration page** (account credentials, global settings)
    - **Input definitions** (data collection parameters)
-   - **Custom commands** (if applicable) - by adding customSearchCommand entries
+   - **Custom commands** (if applicable) - by adding customSearchCommand entries. Follow the json example given for customSearchCommand - with the exact field names and types i.e. `commandName`, `fileName`, `commandType`, `arguments` etc. with their respective properties.
+     - Ensure that `fileName` matches the Python script you will create in `bin/`
    - **Alert actions** (if applicable)
 
 8. **Update Python helper modules** in `package/bin/`:
@@ -203,7 +231,7 @@ After running `ucc-gen build`, the output structure will be:
 
 ### `globalConfig.json`
 This is the **heart** of the UCC-based TA. It defines:
-- **meta:** Add-on name, version, description, author
+- **meta:** Add-on name, version
 - **pages/configuration:** Account setup, proxy, logging settings
 - **pages/inputs:** Input configuration UI and parameters
 - **alerts:** Alert action definitions (if any)
@@ -293,18 +321,25 @@ This is the **heart** of the UCC-based TA. It defines:
 
 4. **Custom command** (if needed):
    ```json
-   "customSearchCommand": {
-     "myservice_lookup": {
-       "command": "myservicelookup",
-       "description": "Lookup data from My Service API",
-       "streaming": false,
-       "outputfields": [
-         {"name": "id"},
-         {"name": "name"},
-         {"name": "status"}
-       ]
-     }
-   }
+   "customSearchCommand": [
+    {
+        "commandName": "mycommandname",
+        "fileName": "mycommandlogic.py",
+        "commandType": "generating",
+        "arguments": [
+            {
+                "name": "argument_name",
+                "validate": {
+                    "type": "Fieldname"
+                },
+                "required": true
+            },
+            {
+                "name": "argument_two"
+            }
+        ]
+    }
+   ]
    ```
 
 ### `package/bin/<input_name>.py`
