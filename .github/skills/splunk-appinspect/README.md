@@ -5,13 +5,11 @@ A GitHub Copilot skill for validating Splunk app packages using the AppInspect R
 ## Quick Start
 
 ```bash
-# Make the script executable
-chmod +x appinspect_validator.py
-
 # Run validation
-./appinspect_validator.py my_app.tar.gz
+uv run --with requests python3 appinspect_validator.py my_app.tar.gz
 
-# Or with Python
+# or without uv - with with a venv active
+pip install requests
 python3 appinspect_validator.py my_app.tar.gz
 ```
 

@@ -1,6 +1,6 @@
 ---
 name: splunk-modular-input
-description: Implements Python data collection scripts for Splunk modular inputs in UCC-based add-ons. Part of TA implementation workflow - creates API client code with checkpoint management for tracking collected data, handles event formatting and writing to Splunk, implements error handling, authentication, rate limiting, and pagination. Generates package/bin/*.py files referenced in globalConfig.json.
+description: Implements Python data collection logic for UCC modular inputs by MODIFYING the auto-generated *_helper.py files. DO NOT create new standalone .py files - ucc-gen init creates the helper file automatically. Updates existing helper functions with API client code, checkpoint management, event writing, error handling, and authentication. Only modifies package/bin/*_helper.py files, never creates new modular input files.
 ---
 
 # Skill Instructions
@@ -13,13 +13,28 @@ Use this skill when writing Python code for Splunk modular inputs in UCC-based a
 - Handling errors and logging
 - Managing authentication and rate limiting
 
+## ⚠️ CRITICAL: UCC Helper Pattern (DO NOT CREATE NEW FILES)
+
+**IMPORTANT**: When working with UCC-based add-ons, `ucc-gen init` automatically creates the helper file for you:
+- ✅ **DO**: Modify the existing `*_helper.py` file created by `ucc-gen init`
+- ❌ **DO NOT**: Create a new standalone modular input Python file
+- ❌ **DO NOT**: Create files like `threat_feed.py`, `myservice_events.py`, etc.
+
+**The helper file is already there** - just update its functions with your API client code!
+
+### File Naming in UCC
+- Input service in globalConfig: `threat_feed`
+- Auto-generated helper file: `package/bin/threat_feed_helper.py` ← **Modify this!**
+- You do NOT need: `package/bin/threat_feed.py` ← **Do not create this!**
+
+### This Skill is ONLY for Modular Inputs
+This skill does **NOT** apply to custom commands. Custom commands:
+- ✅ **DO** need to be created from scratch (e.g., `threatintel.py`)
+- Follow different patterns (inherit from `StreamingCommand`, `GeneratingCommand`, etc.)
+- Are standalone executable scripts
+
 ## What is a Modular Input?
 A modular input is a Python script that Splunk runs periodically to collect data. In UCC-based add-ons, these scripts are automatically configured based on your `globalConfig.json` and execute according to the interval users set in the UI.
-
-## File Location and Naming
-Modular input scripts live in `package/bin/` and are named after the input service defined in globalConfig:
-- Service name in globalConfig: `myservice_events`
-- Python file: `package/bin/myservice_events.py`
 
 ## Core Structure: The Helper Pattern
 

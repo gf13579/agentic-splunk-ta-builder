@@ -86,15 +86,20 @@ This agent analyzes API documentation to determine the appropriate Splunk TA com
 6. **Understand the generated structure:**
 ```
    TA-myservice/
+   ├── README.md                # Project documentation
+   ├── globalConfig.json        # At root for reference
    └── package/
+       ├── app.manifest         # App metadata - must be here
        ├── globalConfig.json    # Core UCC configuration - CUSTOMIZE THIS
        ├── bin/                 # Python scripts go here
-       │   └── myservice_input.py  # Main data collection script
-       ├── README/              # Configuration specs
-       │   └── inputs.conf.spec
+       │   └── myservice_input_helper.py  # Auto-generated helper (MODIFY this)
+       ├── LICENSES/            # License files
+       ├── README.txt           # App documentation for Splunkbase
        ├── static/              # App icons (place generated icons here)
        └── lib/                 # Additional Python libraries (if needed)
 ```
+
+**BUILD SOURCE**: Always point `ucc-gen build --source` to the `package/` subdirectory, as this is where `app.manifest`, `bin/`, and other package contents are located.
 
 After running `ucc-gen build`, the output structure will be:
 ```
@@ -117,11 +122,11 @@ After running `ucc-gen build`, the output structure will be:
    - **Custom commands** (if applicable) - by adding customSearchCommand entries
    - **Alert actions** (if applicable)
 
-8. **Write Python helper modules** in `package/bin/`:
-   - Modular input script(s) for data collection
-   - Custom command handler(s)
-   - Alert action handler(s)
-   - Shared utilities (API client, error handling, checkpoint management)
+8. **Update Python helper modules** in `package/bin/`:
+   - **Modular input helpers** - `ucc-gen init` creates `*_helper.py` files automatically. Use the `splunk-modular-input` skill to **modify** these existing files with your API collection logic. DO NOT create new standalone modular input files.
+   - **Custom command handlers** - Create these from scratch (e.g., `threatintel.py`). These are executable Python scripts that inherit from Splunk's command base classes.
+   - **Alert action handlers** - Create if applicable
+   - **Shared utilities** - Add if needed for common functionality (API client, error handling, etc.)
 
 ### Phase 5: Testing & Validation
 9. **Create basic tests:**
@@ -133,6 +138,8 @@ After running `ucc-gen build`, the output structure will be:
     ```bash
     ucc-gen build --source TA-myservice/package --ta-version 1.0.0
     ```
+    **CRITICAL**: The `--source` parameter MUST point to the `package/` subdirectory, not the root. This is where UCC expects to find `app.manifest`, `bin/`, and other package contents.
+    
     This creates `TA-myservice/output/TA-myservice/` with the built add-on
 
 11. **Generate app icons:**
