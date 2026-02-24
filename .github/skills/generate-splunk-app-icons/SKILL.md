@@ -17,8 +17,11 @@ Generates four PNG icon files required for Splunk app submissions:
 
 ## Required Information
 
-You must ask the user for:
+You must provide:
 - **Text**: 1-2 characters to display on the icon (e.g., "CI", "DB", "ML")
+
+The agent may infer this value from the app name or display name (for example, using initials) and skip prompting the user if a reasonable default is available.
+Example: `TA-myservice` or `My Service Add-on for Splunk` → `MS`.
 
 ## Optional Parameters
 
@@ -32,7 +35,9 @@ You may ask the user for these, or use the defaults:
 
 When the user wants to generate Splunk app icons:
 
-1. **Required**: Ask for the text to display (1-2 characters)
+1. **Required**: Provide the text to display (1-2 characters)
+	- If the app name or display name is known, infer a short 1-2 character label and proceed without prompting.
+	- If no reasonable default is available, ask the user.
 2. Optional: Ask if they want to customize colors or border
 3. Run the generation script with the provided parameters
 

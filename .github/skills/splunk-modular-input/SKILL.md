@@ -1,668 +1,698 @@
 ---
 name: splunk-modular-input
-description: Implements Python data collection logic for UCC modular inputs by MODIFYING the auto-generated *_helper.py files. DO NOT create new standalone .py files - ucc-gen init creates the helper file automatically. Updates existing helper functions with API client code, checkpoint management, event writing, error handling, and authentication. Only modifies package/bin/*_helper.py files, never creates new modular input files.
+description: Implements Python data collection logic for UCC modular inputs by MODIFYING the auto-generated *_helper.py files. Uses the stream_events() and validate_input() entry points defined by UCC. Adds API client logic, event writing, error handling, and optional state management. Only modifies package/bin/*_helper.py files.
 ---
 
 # Skill Instructions
 
 ## When to Use This Skill
-Use this skill when writing Python code for Splunk modular inputs in UCC-based add-ons. This covers the actual data collection scripts that live in `package/bin/` and are responsible for:
-- Calling APIs to collect data
-- Managing checkpoints (tracking what's been collected)
-- Formatting and writing events to Splunk
-- Handling errors and logging
-- Managing authentication and rate limiting
 
-## ⚠️ CRITICAL: UCC Helper Pattern (DO NOT CREATE NEW FILES)
+Use this skill when writing Python code for Splunk modular inputs in UCC-based add-ons. The helper file you're modifying contains:
+- `validate_input()`: Validates input configuration (called when creating/editing inputs in the UI)
+- `stream_events()`: Main data collection function (called periodically based on the interval set by users)
 
-**IMPORTANT**: When working with UCC-based add-ons, `ucc-gen init` automatically creates the helper file for you:
-- ✅ **DO**: Modify the existing `*_helper.py` file created by `ucc-gen init`
-- ❌ **DO NOT**: Create a new standalone modular input Python file
+**Assumption:** API/vendor documentation analysis and architectural decisions are completed before using this skill. This skill implements the previously defined inputs; it does not design them.
+
+**Dependency note:** If you add third-party imports beyond the default UCC set, update `package/lib/requirements.txt` with each new package on its own line. UCC includes `requests`, `solnlib`, and `splunk-sdk` by default.
+
+## Editing globalConfig.json for Custom Input Parameters
+
+Before implementing the helper file logic, you may need to edit `globalConfig.json` to expose API parameters as configurable fields in the UI.
+
+**When to add custom input fields:**
+- API endpoints accept optional parameters (e.g., `limit`, `filters`, `date_range`)
+- Users should be able to customize data collection behavior without editing code
+- Examples: `limit` (max results), `ioc_type` (filter by type), `polling_frequency`, `data_source`
+
+**How to add custom fields to an input:**
+
+In `globalConfig.json`, locate the `pages.inputs.services[]` array and add fields to the `entity` array for your input. Example:
+
+```json
+{
+  "pages": {
+    "inputs": {
+      "services": [
+        {
+          "name": "my_input",
+          "title": "My Input",
+          "entity": [
+            {
+              "type": "text",
+              "label": "Name",
+              "field": "name",
+              "required": true
+            },
+            {
+              "type": "interval",
+              "label": "Interval",
+              "field": "interval",
+              "defaultValue": "300"
+            },
+            {
+              "type": "text",
+              "label": "Limit",
+              "field": "limit",
+              "defaultValue": "100",
+              "help": "Maximum number of results per collection run",
+              "validators": [
+                {
+                  "type": "number",
+                  "errorMsg": "Limit must be between 1 and 10000",
+                  "range": [1, 10000],
+                  "isInteger": true
+                }
+              ]
+            },
+            {
+              "type": "singleSelect",
+              "label": "IOC Type",
+              "field": "ioc_type",
+              "options": {
+                "disableSearch": true,
+                "autoCompleteFields": [
+                  {"label": "IP", "value": "ip"},
+                  {"label": "Domain", "value": "domain"},
+                  {"label": "All", "value": "all"}
+                ]
+              },
+              "defaultValue": "all",
+              "help": "Filter threat feed by indicator type"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+Note - prefer "autoCompleteFields" over "items" for singleSelect as "items" appears to be broken currently.
+
+**Common UCC field types for inputs:**
+- `text`: Free-form text input
+- `number`: Integer or float with optional range validation
+- `checkbox`: Boolean toggle
+- `singleSelect`: Dropdown menu (options provided)
+- `interval`: Time interval with validation
+- `index`: Splunk index selector
+
+**Accessing custom fields in the helper:**
+Once defined in globalConfig.json, access these fields in your `stream_events()` function:
+
+```python
+def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
+    for input_name, input_item in inputs.inputs.items():
+        # Access custom parameters
+        limit = input_item.get("limit", "100")  # With default fallback
+        ioc_type = input_item.get("ioc_type", "all")
+        
+        # Use in API call
+        params = {
+            "limit": int(limit),
+            "ioc_type": ioc_type
+        }
+        response = session.get(api_url, params=params)
+```
+
+**Validating globalConfig.json:**
+After editing globalConfig.json, validate it before building using the `validate-ucc-json` skill to catch schema errors early:
+
+```bash
+uv run --with requests python3 .github/skills/validate-ucc-json/validate_ucc_json.py globalConfig.json
+```
+
+If validation fails, fix the schema violations before running `ucc-gen build`.
+
+**Reference examples:**
+- See `.github/skills/ucc-config-generator/exampleOfGlobalConfig.json` for a complete example with custom input parameters
+
+## Key Principle: ONLY Modify the Helper File
+
+**IMPORTANT**: When working with UCC-based add-ons, `ucc-gen init` automatically creates the first helper file for you.
+
+If more than one type of input is required, define it in globalConfig.json and then create additional helper stubs by copying the generated helper file and adjusting the filename to match each input name. This keeps the modular input skill focused on modifying existing helpers rather than creating new files.
+
+- ✅ **DO**: Modify the existing `*_helper.py` files
+- ❌ **DO NOT**: Create new standalone modular input Python files
 - ❌ **DO NOT**: Create files like `threat_feed.py`, `myservice_events.py`, etc.
 
-**The helper file is already there** - just update its functions with your API client code!
+**The first helper file is already there** - just update its functions with your API client code!
 
 ### File Naming in UCC
 - Input service in globalConfig: `threat_feed`
 - Auto-generated helper file: `package/bin/threat_feed_helper.py` ← **Modify this!**
 - You do NOT need: `package/bin/threat_feed.py` ← **Do not create this!**
 
-### This Skill is ONLY for Modular Inputs
-This skill does **NOT** apply to custom commands. Custom commands:
-- ✅ **DO** need to be created from scratch (e.g., `threatintel.py`)
-- Follow different patterns (inherit from `StreamingCommand`, `GeneratingCommand`, etc.)
-- Are standalone executable scripts
+## UCC Modular Input Structure
 
-## What is a Modular Input?
-A modular input is a Python script that Splunk runs periodically to collect data. In UCC-based add-ons, these scripts are automatically configured based on your `globalConfig.json` and execute according to the interval users set in the UI.
-
-## Core Structure: The Helper Pattern
-
-UCC provides a powerful helper framework that simplifies modular input development. Here's the basic structure every modular input should follow:
+The generated helper file has this structure:
 
 ```python
-# encoding = utf-8
 import import_declare_test
-import os
-import sys
-import time
-import datetime
 import json
-
+import logging
+from solnlib import conf_manager, log
 from splunklib import modularinput as smi
+
+ADDON_NAME = "TA-MyAddOn"
+
+def validate_input(definition: smi.ValidationDefinition):
+    """Validate input configuration. Raise an exception to fail validation."""
+    pass
+
+def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
+    """Main data collection function called by Splunk."""
+    # inputs.inputs is a dict like:
+    # {
+    #   "my_input://<input_name>": {
+    #     "account": "<account_name>",
+    #     "disabled": "0",
+    #     "host": "$decideOnStartup",
+    #     "index": "<index_name>",
+    #     "interval": "<interval>",
+    #     "python.version": "python3",
+    #   },
+    # }
+    for input_name, input_item in inputs.inputs.items():
+        # Process this input
+        pass
+```
+
+**Key parameters:**
+- `inputs.metadata["session_key"]`: Splunk session token (needed for REST API calls)
+- `inputs.inputs`: Dictionary of configured inputs (can be multiple if the input is instantiated multiple times)
+- `input_item`: Configuration values for the current input instance
+- `event_writer`: Object with `write_event()` method
+
+## Getting Configuration Values
+
+### Accessing Input Configuration
+
+Inside `stream_events()`, use `inputs.inputs` to access configuration:
+
+```python
+def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
+    for input_name, input_item in inputs.inputs.items():
+        # User-configured fields
+        account_name = input_item.get("account")          # From globalConfig
+        index = input_item.get("index")                   # From globalConfig
+        interval = input_item.get("interval")            # From globalConfig
+        custom_field = input_item.get("my_custom_param") # From globalConfig
+        
+        # Metadata
+        session_key = inputs.metadata["session_key"]
+        server_uri = inputs.metadata.get("server_uri")   # Optional
+```
+
+### Getting Account Credentials
+
+Use `conf_manager` from solnlib to fetch account credentials from your account config file:
+
+```python
 from solnlib import conf_manager
-from solnlib import log
-from solnlib.modular_input import checkpointer
 
-def validate_input(helper, definition):
-    """
-    Validate the input configuration.
-    Called when user creates or edits an input.
-    Raise an exception if validation fails.
-    """
-    pass  # Add validation logic if needed
-
-def collect_events(helper, ew):
-    """
-    Main data collection function.
-    Called periodically based on the interval configured by the user.
-    
-    Args:
-        helper: Helper object with methods to access config and utilities
-        ew: EventWriter object to write events to Splunk
-    """
-    # 1. Get configuration
-    # 2. Initialize checkpoint
-    # 3. Call API
-    # 4. Process and write events
-    # 5. Update checkpoint
-    # 6. Handle errors
-    
-    pass  # Implementation goes here
-```
-
-## Essential Helper Methods
-
-### Getting Configuration Values
-
-```python
-def collect_events(helper, ew):
-    # Get input-specific configuration (from inputs page)
-    input_name = helper.get_input_stanza_names()
-    interval = helper.get_arg('interval')
-    index = helper.get_arg('index')
-    
-    # Get account credentials (from account/configuration page)
-    account_name = helper.get_arg('account')
-    account = helper.get_account_by_name(account_name)
-    api_url = account['api_url']
-    api_key = account['api_key']
-    
-    # Get proxy settings (if proxy tab is enabled)
-    proxy_settings = helper.get_proxy()
-    if proxy_settings:
-        proxy_url = proxy_settings.get('proxy_url')
-        proxy_username = proxy_settings.get('proxy_username')
-        proxy_password = proxy_settings.get('proxy_password')
-    
-    # Get log level
-    log_level = helper.get_log_level()
-    helper.log_info(f"Starting data collection with log level: {log_level}")
-```
-
-### Common Helper Methods Reference
-
-| Method | Purpose | Example |
-|--------|---------|---------|
-| `helper.get_arg(name)` | Get input parameter value | `interval = helper.get_arg('interval')` |
-| `helper.get_account_by_name(name)` | Get account credentials | `account = helper.get_account_by_name('my_account')` |
-| `helper.get_proxy()` | Get proxy configuration | `proxy = helper.get_proxy()` |
-| `helper.get_input_stanza_names()` | Get input name | `name = helper.get_input_stanza_names()` |
-| `helper.get_log_level()` | Get configured log level | `level = helper.get_log_level()` |
-| `helper.log_info(msg)` | Log info message | `helper.log_info("Processing...")` |
-| `helper.log_error(msg)` | Log error message | `helper.log_error("API call failed")` |
-| `helper.log_warning(msg)` | Log warning message | `helper.log_warning("Rate limit hit")` |
-| `helper.log_debug(msg)` | Log debug message | `helper.log_debug("Raw response: ...")` |
-
-## Checkpoint Management
-
-Checkpoints track what data has already been collected to avoid duplicates. UCC provides KVStore-based checkpointing.
-
-### Basic Checkpoint Pattern
-
-```python
-from solnlib.modular_input import checkpointer
-
-def collect_events(helper, ew):
-    # Get input name for checkpoint key
-    input_name = helper.get_input_stanza_names()
-    
-    # Get checkpointer (KVStore-based)
-    ckpt = helper.get_check_point(input_name)
-    
-    # Read last checkpoint value
-    last_timestamp = ckpt.get("last_timestamp")
-    if last_timestamp is None:
-        # First run - use a default starting point
-        last_timestamp = "2024-01-01T00:00:00Z"
-    
-    helper.log_info(f"Last checkpoint: {last_timestamp}")
-    
-    # Collect data from API (passing last_timestamp to get only new data)
-    events = fetch_data_from_api(api_url, api_key, since=last_timestamp)
-    
-    # Process and write events...
-    
-    # Update checkpoint with latest timestamp
-    if events:
-        latest_timestamp = events[-1]['timestamp']
-        ckpt.update("last_timestamp", latest_timestamp)
-        helper.log_info(f"Updated checkpoint to: {latest_timestamp}")
-```
-
-### Checkpoint Best Practices
-
-1. **Use timestamps when possible**: APIs that support `since` or `after` parameters
-2. **Use IDs for APIs without timestamps**: Store last seen ID
-3. **Store multiple values**: Dictionary checkpoints for complex state
-4. **Always initialize**: Provide sensible defaults for first run
-5. **Update atomically**: Only update checkpoint after successfully writing events
-
-### Advanced Checkpoint Pattern (Multiple Fields)
-
-```python
-def collect_events(helper, ew):
-    input_name = helper.get_input_stanza_names()
-    ckpt = helper.get_check_point(input_name)
-    
-    # Read checkpoint state
-    checkpoint_state = ckpt.get("state")
-    if checkpoint_state is None:
-        checkpoint_state = {
-            "last_timestamp": "2024-01-01T00:00:00Z",
-            "last_id": 0,
-            "page": 1
-        }
-    
-    # Use checkpoint to fetch data
-    events = fetch_paginated_data(
-        since=checkpoint_state['last_timestamp'],
-        after_id=checkpoint_state['last_id'],
-        page=checkpoint_state['page']
+def get_account_config(session_key: str, addon_name: str, account_name: str) -> dict:
+    """Fetch account credentials from the account config."""
+    cfm = conf_manager.ConfManager(
+        session_key,
+        addon_name,
+        realm=f"__REST_CREDENTIAL__#{addon_name}#configs/conf-{addon_name}_account",
     )
-    
-    # Process events...
-    
-    # Update all checkpoint fields
-    if events:
-        checkpoint_state['last_timestamp'] = events[-1]['timestamp']
-        checkpoint_state['last_id'] = events[-1]['id']
-        checkpoint_state['page'] = current_page + 1
-        ckpt.update("state", checkpoint_state)
+    account_conf = cfm.get_conf(f"{addon_name}_account")
+    return dict(account_conf.get(account_name))
 ```
 
-## Writing Events to Splunk
+See [conf_manager documentation](https://splunk.github.io/addonfactory-solutions-library-python/conf_manager/) for more details.
 
-### Basic Event Writing
+### Getting Proxy Settings
+
+Proxy configuration is stored in the app settings:
 
 ```python
-def collect_events(helper, ew):
-    # ... get configuration and fetch data ...
-    
-    # Get target index
-    index = helper.get_arg('index')
-    
-    # Write each event
-    for item in api_response['events']:
-        # Create event object
-        event = helper.new_event(
-            source=helper.get_input_type(),  # e.g., "myservice:events"
-            index=index,
-            sourcetype=helper.get_sourcetype(),  # from inputs.conf
-            data=json.dumps(item)  # Convert dict to JSON string
-        )
-        ew.write_event(event)
-    
-    helper.log_info(f"Successfully indexed {len(api_response['events'])} events")
+def get_proxy_config(session_key: str, addon_name: str) -> dict:
+    """Fetch proxy settings."""
+    cfm = conf_manager.ConfManager(session_key, addon_name)
+    try:
+        settings_conf = cfm.get_conf(f"{addon_name}_settings")
+        proxy = settings_conf.get("proxy")
+        if proxy:
+            return {
+                "proxy_enabled": proxy.get("proxy_enabled") in ("1", "true", "yes"),
+                "proxy_url": proxy.get("proxy_url"),
+                "proxy_username": proxy.get("proxy_username"),
+                "proxy_password": proxy.get("proxy_password"),
+            }
+    except Exception:
+        pass
+    return {}
 ```
 
-### Event Writing Best Practices
+## Logging
 
-1. **Always use JSON for structured data**: `data=json.dumps(dict)`
-2. **Add timestamp if available**: `event.time = timestamp`
-3. **Set appropriate sourcetype**: Usually configured in globalConfig
-4. **Include source**: Helps with data routing and troubleshooting
-5. **Batch logging**: Log summary stats, not individual events
-
-### Enhanced Event Writing with Timestamp
+Use solnlib's logging:
 
 ```python
-import time
+from solnlib import log
+
+logger = log.Logs().get_logger("addon_name_input_name")
+logger.setLevel(logging.INFO)
+
+logger.info("Processing input")
+logger.warning("Rate limit approaching")
+logger.error("API call failed")
+logger.debug("Response: %s", response.text)
+```
+
+Set log level from configuration:
+
+```python
+from solnlib import conf_manager, log
+import logging
+
+session_key = inputs.metadata["session_key"]
+log_level = conf_manager.get_log_level(
+    logger=logger,
+    session_key=session_key,
+    app_name=ADDON_NAME,
+    conf_name=f"{ADDON_NAME}_settings",
+)
+logger.setLevel(log_level)
+```
+
+## Events and Writing
+
+Write events using `event_writer.write_event()`:
+
+```python
+from splunklib import modularinput as smi
+
+event = smi.Event(
+    data=json.dumps({"key": "value"}, ensure_ascii=False, default=str),
+    source="myapp",
+    sourcetype="my:sourcetype",
+    index=index_name,
+)
+event_writer.write_event(event)
+```
+
+With timestamp:
+
+```python
 from datetime import datetime
 
-def collect_events(helper, ew):
-    index = helper.get_arg('index')
-    
-    for item in events:
-        # Extract timestamp from API response
-        timestamp_str = item.get('created_at', item.get('timestamp'))
-        
-        # Convert to epoch time (Splunk format)
-        if timestamp_str:
-            dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-            epoch_time = dt.timestamp()
-        else:
-            epoch_time = time.time()
-        
-        # Create event with explicit timestamp
-        event = helper.new_event(
-            source=helper.get_input_type(),
-            index=index,
-            sourcetype=helper.get_sourcetype(),
-            data=json.dumps(item),
-            time=epoch_time
-        )
-        ew.write_event(event)
+# Parse ISO timestamp to epoch
+timestamp_str = "2024-02-13T10:30:00Z"
+dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+event.time = dt.timestamp()
+event_writer.write_event(event)
 ```
 
-## API Client Pattern
+## Baseline Pattern: Simple Collection (Without Checkpoints)
 
-### Basic HTTP Request with Error Handling
+For most APIs, the simplest approach is to fetch and index all available data on each collection run. This is **stateless** and does not require checkpoint management.
 
-```python
-import requests
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
-
-def collect_events(helper, ew):
-    # Get configuration
-    account_name = helper.get_arg('account')
-    account = helper.get_account_by_name(account_name)
-    api_url = account['api_url']
-    api_key = account['api_key']
-    
-    # Create session with retry logic
-    session = requests.Session()
-    retry = Retry(
-        total=3,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504]
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    
-    # Set headers
-    headers = {
-        'Authorization': f'Bearer {api_key}',
-        'Content-Type': 'application/json'
-    }
-    
-    try:
-        # Make API call
-        response = session.get(
-            f"{api_url}/v1/events",
-            headers=headers,
-            timeout=30
-        )
-        response.raise_for_status()
-        
-        # Parse response
-        data = response.json()
-        events = data.get('events', [])
-        
-        # Write events
-        for event in events:
-            ew.write_event(helper.new_event(
-                source=helper.get_input_type(),
-                index=helper.get_arg('index'),
-                sourcetype=helper.get_sourcetype(),
-                data=json.dumps(event)
-            ))
-        
-        helper.log_info(f"Successfully collected {len(events)} events")
-        
-    except requests.exceptions.Timeout:
-        helper.log_error("API request timed out")
-    except requests.exceptions.HTTPError as e:
-        helper.log_error(f"HTTP error: {e.response.status_code} - {e.response.text}")
-    except requests.exceptions.RequestException as e:
-        helper.log_error(f"Request failed: {str(e)}")
-    except json.JSONDecodeError as e:
-        helper.log_error(f"Failed to parse JSON response: {str(e)}")
-    except Exception as e:
-        helper.log_error(f"Unexpected error: {str(e)}")
-        raise
-```
-
-### API Client with Pagination
+**When to use this pattern:**
+- ✅ API returns all current data (no change tracking needed)
+- ✅ Data is idempotent (safe to re-index)
+- ✅ API has no incremental query parameters (`since`, `after`, `last_modified`)
+- ✅ Data set is reasonably small on each run
+- ✅ Simple troubleshooting preferred over avoiding duplicates
 
 ```python
-def collect_events(helper, ew):
-    account = helper.get_account_by_name(helper.get_arg('account'))
-    api_url = account['api_url']
-    api_key = account['api_key']
-    
-    headers = {'Authorization': f'Bearer {api_key}'}
-    
-    # Get checkpoint
-    input_name = helper.get_input_stanza_names()
-    ckpt = helper.get_check_point(input_name)
-    last_timestamp = ckpt.get("last_timestamp") or "2024-01-01T00:00:00Z"
-    
-    page = 1
-    page_size = 100
-    total_events = 0
-    
-    while True:
+def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
+    for input_name, input_item in inputs.inputs.items():
+        session_key = inputs.metadata["session_key"]
+        normalized_input_name = input_name.split("/")[-1]
+        logger = log.Logs().get_logger(f"addon_{normalized_input_name}")
+        
         try:
-            response = requests.get(
+            # Get configuration
+            account_name = input_item.get("account")
+            index = input_item.get("index")
+            
+            # Get credentials
+            account = get_account_config(session_key, ADDON_NAME, account_name)
+            api_key = account.get("api_key")
+            
+            logger.info(f"Starting collection for {normalized_input_name}")
+            
+            # Fetch all available data
+            session = build_session()
+            response = session.get(
                 f"{api_url}/v1/events",
-                headers=headers,
-                params={
-                    'since': last_timestamp,
-                    'page': page,
-                    'per_page': page_size
-                },
-                timeout=30
+                headers={"Authorization": f"Bearer {api_key}"},
+                params={"limit": 100},
+                timeout=30,
             )
             response.raise_for_status()
             data = response.json()
             
-            events = data.get('events', [])
-            if not events:
-                break  # No more data
-            
-            # Write events
-            for event in events:
-                ew.write_event(helper.new_event(
-                    source=helper.get_input_type(),
-                    index=helper.get_arg('index'),
-                    sourcetype=helper.get_sourcetype(),
-                    data=json.dumps(event)
+            # Write all events
+            event_count = 0
+            for event_data in data.get("events", []):
+                event_writer.write_event(smi.Event(
+                    data=json.dumps(event_data, ensure_ascii=False, default=str),
+                    sourcetype="my:sourcetype",
+                    index=index,
                 ))
+                event_count += 1
             
-            total_events += len(events)
+            logger.info(f"Completed collection: {event_count} events indexed")
             
-            # Check if there are more pages
-            if not data.get('has_more', False):
-                break
-            
-            page += 1
-            
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
         except Exception as e:
-            helper.log_error(f"Error on page {page}: {str(e)}")
-            break
-    
-    # Update checkpoint with latest timestamp
-    if total_events > 0:
-        latest_timestamp = events[-1].get('timestamp', last_timestamp)
-        ckpt.update("last_timestamp", latest_timestamp)
-    
-    helper.log_info(f"Collected {total_events} events across {page} pages")
+            logger.error(f"Collection failed: {str(e)}", exc_info=True)
 ```
 
-### API Client with Rate Limiting
+## API Integration
+
+### Basic HTTP Request with Retry Logic
+
+
 
 ```python
-import time
-from datetime import datetime, timedelta
-
-def collect_events(helper, ew):
-    account = helper.get_account_by_name(helper.get_arg('account'))
-    api_url = account['api_url']
-    api_key = account['api_key']
-    
-    headers = {'Authorization': f'Bearer {api_key}'}
-    
-    # Track rate limiting
-    max_requests_per_minute = 60
-    request_count = 0
-    window_start = datetime.now()
-    
-    events_to_fetch = get_event_ids_to_fetch()  # Your logic here
-    
-    for event_id in events_to_fetch:
-        # Check if we need to wait for rate limit window
-        if request_count >= max_requests_per_minute:
-            elapsed = (datetime.now() - window_start).total_seconds()
-            if elapsed < 60:
-                sleep_time = 60 - elapsed
-                helper.log_info(f"Rate limit reached, sleeping for {sleep_time:.2f} seconds")
-                time.sleep(sleep_time)
-            
-            # Reset window
-            window_start = datetime.now()
-            request_count = 0
-        
-        try:
-            response = requests.get(
-                f"{api_url}/v1/events/{event_id}",
-                headers=headers,
-                timeout=30
-            )
-            request_count += 1
-            
-            if response.status_code == 429:
-                # Rate limited - wait and retry
-                retry_after = int(response.headers.get('Retry-After', 60))
-                helper.log_warning(f"Rate limited, waiting {retry_after} seconds")
-                time.sleep(retry_after)
-                continue
-            
-            response.raise_for_status()
-            event_data = response.json()
-            
-            # Write event
-            ew.write_event(helper.new_event(
-                source=helper.get_input_type(),
-                index=helper.get_arg('index'),
-                sourcetype=helper.get_sourcetype(),
-                data=json.dumps(event_data)
-            ))
-            
-        except Exception as e:
-            helper.log_error(f"Error fetching event {event_id}: {str(e)}")
-            continue
-```
-
-## Complete Example: Production-Ready Modular Input
-
-Here's a complete example incorporating all best practices:
-
-```python
-# encoding = utf-8
-import import_declare_test
-import os
-import sys
-import time
-import datetime
-import json
 import requests
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from urllib3.util.retry import Retry
 
-from splunklib import modularinput as smi
-from solnlib.modular_input import checkpointer
-
-def validate_input(helper, definition):
-    """
-    Validate input configuration.
-    """
-    # Add any validation logic here
-    # For example, test API connectivity
-    pass
-
-def collect_events(helper, ew):
-    """
-    Main data collection function.
-    """
-    # Step 1: Get configuration
-    try:
-        account_name = helper.get_arg('account')
-        account = helper.get_account_by_name(account_name)
-        api_url = account.get('api_url')
-        api_key = account.get('api_key')
-        
-        interval = helper.get_arg('interval')
-        index = helper.get_arg('index')
-        
-        helper.log_info(f"Starting data collection for account: {account_name}")
-        
-    except Exception as e:
-        helper.log_error(f"Failed to read configuration: {str(e)}")
-        return
-    
-    # Step 2: Initialize checkpoint
-    input_name = helper.get_input_stanza_names()
-    ckpt = helper.get_check_point(input_name)
-    
-    last_timestamp = ckpt.get("last_timestamp")
-    if last_timestamp is None:
-        # First run - start from 24 hours ago
-        from datetime import datetime, timedelta
-        start_time = datetime.utcnow() - timedelta(hours=24)
-        last_timestamp = start_time.isoformat() + "Z"
-        helper.log_info(f"First run - starting from {last_timestamp}")
-    else:
-        helper.log_info(f"Resuming from checkpoint: {last_timestamp}")
-    
-    # Step 3: Set up HTTP session with retry
+def build_session(proxy_config: dict = None) -> requests.Session:
+    """Create a session with retry logic and proxy support."""
     session = requests.Session()
+    
+    # Configure retries
     retry = Retry(
         total=3,
         backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504]
+        status_forcelist=[429, 500, 502, 503, 504],
     )
     adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
     
-    headers = {
-        'Authorization': f'Bearer {api_key}',
-        'Content-Type': 'application/json',
-        'User-Agent': 'Splunk-TA-MyService/1.0.0'
-    }
+    # Configure proxy if provided
+    if proxy_config and proxy_config.get("proxy_enabled"):
+        proxy_url = proxy_config.get("proxy_url")
+        if proxy_config.get("proxy_username") and proxy_config.get("proxy_password"):
+            # Build proxy URL with credentials
+            parsed = urlparse(proxy_url)
+            auth = f"{proxy_config['proxy_username']}:{proxy_config['proxy_password']}"
+            proxy_url = f"{parsed.scheme}://{auth}@{parsed.netloc}{parsed.path}"
+        session.proxies = {"http": proxy_url, "https": proxy_url}
     
-    # Step 4: Fetch and process data
-    page = 1
-    page_size = 100
-    total_events = 0
-    latest_timestamp = last_timestamp
-    
-    while True:
+    return session
+
+def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
+    for input_name, input_item in inputs.inputs.items():
         try:
-            helper.log_debug(f"Fetching page {page}")
+            session = build_session()
+            headers = {"Authorization": f"Bearer {api_key}"}
             
             response = session.get(
                 f"{api_url}/v1/events",
                 headers=headers,
-                params={
-                    'since': last_timestamp,
-                    'page': page,
-                    'per_page': page_size,
-                    'order': 'asc'  # Important: oldest first for proper checkpointing
-                },
-                timeout=30
+                params={"limit": 100},
+                timeout=30,
             )
-            
             response.raise_for_status()
             data = response.json()
             
-            events = data.get('events', [])
-            if not events:
-                helper.log_debug("No more events to fetch")
-                break
-            
-            helper.log_debug(f"Processing {len(events)} events from page {page}")
-            
-            # Write events to Splunk
-            for event_data in events:
-                # Extract timestamp if available
-                event_time = None
-                if 'timestamp' in event_data:
-                    try:
-                        dt = datetime.datetime.fromisoformat(
-                            event_data['timestamp'].replace('Z', '+00:00')
-                        )
-                        event_time = dt.timestamp()
-                    except Exception as e:
-                        helper.log_warning(f"Failed to parse timestamp: {str(e)}")
-                
-                # Create and write event
-                event = helper.new_event(
-                    source=helper.get_input_type(),
-                    index=index,
-                    sourcetype=helper.get_sourcetype(),
-                    data=json.dumps(event_data),
-                    time=event_time
-                )
-                ew.write_event(event)
-                
-                # Track latest timestamp for checkpoint
-                if 'timestamp' in event_data:
-                    latest_timestamp = event_data['timestamp']
-            
-            total_events += len(events)
-            
-            # Check for more pages
-            if not data.get('has_more', False):
-                break
-            
-            page += 1
-            
-            # Safety check - don't process too many pages in one run
-            if page > 100:
-                helper.log_warning(f"Reached maximum page limit (100), will continue next run")
-                break
+            # Process response...
             
         except requests.exceptions.Timeout:
-            helper.log_error(f"Request timed out on page {page}")
-            break
+            logger.error("API request timed out")
         except requests.exceptions.HTTPError as e:
-            helper.log_error(f"HTTP error on page {page}: {e.response.status_code}")
-            if e.response.status_code in [401, 403]:
-                helper.log_error("Authentication failed - check API key")
-            break
+            logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request failed: {str(e)}")
         except json.JSONDecodeError as e:
-            helper.log_error(f"Invalid JSON response on page {page}: {str(e)}")
-            break
+            logger.error(f"Invalid JSON response: {str(e)}")
+```
+
+### Pagination Example
+
+When an API supports pagination, fetch all pages on each run and write all events:
+
+```python
+def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
+    for input_name, input_item in inputs.inputs.items():
+        try:
+            session = build_session()
+            normalized_input_name = input_name.split("/")[-1]
+            
+            page = 1
+            total_events = 0
+            
+            while True:
+                response = session.get(
+                    f"{api_url}/v1/events",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    params={
+                        "page": page,
+                        "per_page": 100,
+                        "order": "asc",
+                    },
+                    timeout=30,
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                events = data.get("events", [])
+                if not events:
+                    break
+                
+                for event_data in events:
+                    event_writer.write_event(smi.Event(
+                        data=json.dumps(event_data, ensure_ascii=False, default=str),
+                        sourcetype="my:sourcetype",
+                        index=input_item.get("index"),
+                    ))
+                
+                total_events += len(events)
+                if not data.get("has_more", False):
+                    break
+                
+                page += 1
+                
+            logger.info(f"Fetched {total_events} events in {page} pages")
+            
         except Exception as e:
-            helper.log_error(f"Unexpected error on page {page}: {str(e)}")
-            break
+            logger.error(f"Pagination failed: {str(e)}", exc_info=True)
+```
+
+## Error Handling and Logging
+
+Use try/except with proper logging instead of silent failures:
+
+```python
+def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
+    for input_name, input_item in inputs.inputs.items():
+        normalized_input_name = input_name.split("/")[-1]
+        logger = log.Logs().get_logger(f"addon_{normalized_input_name}")
+        
+        try:
+            # Set log level
+            session_key = inputs.metadata["session_key"]
+            log_level = conf_manager.get_log_level(
+                logger=logger,
+                session_key=session_key,
+                app_name=ADDON_NAME,
+                conf_name=f"{ADDON_NAME}_settings",
+            )
+            logger.setLevel(log_level)
+            
+            # Log input start
+            logger.info(f"Starting data collection for {normalized_input_name}")
+            
+            # ... collection logic ...
+            
+            # Log input end
+            logger.info(f"Completed collection: {total_events} events indexed")
+            
+        except Exception as e:
+            logger.error(f"Exception in {normalized_input_name}: {str(e)}", exc_info=True)
+            # Re-raise if fatal; otherwise Splunk will retry on next interval
+```
+
+## Advanced Patterns: Stateful Collection with Checkpoints
+
+Use checkpoints only when needed to avoid re-indexing the same data. Checkpoints track state between modular input runs using KVStore.
+
+**Reference:** [KVStoreCheckpointer documentation](https://splunk.github.io/addonfactory-solutions-library-python/modular_input/checkpointer/#kvstore-checkpointer)
+
+### When to Use Checkpoints
+
+**Use checkpoints when:**
+- ✅ API supports incremental queries (`since`, `after`, `last_modified`, `from_timestamp`, etc.)
+- ✅ Data changes over time and re-indexing would create duplicates
+- ✅ Data set is large and you want to avoid fetching everything each run
+- ✅ API provides event IDs or offsets to resume from
+
+**Skip checkpoints when:**
+- ❌ API always returns fresh data regardless of query parameters (reference/lookup data)
+- ❌ API has no parameters for incremental filtering
+- ❌ Data is immutable or reference-only
+- ❌ Duplicates are acceptable or automatically deduplicated
+- ❌ Adding complexity is not worth the small performance gain
+
+### Checkpoint Pattern
+
+```python
+from solnlib.modular_input import checkpointer
+
+def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
+    for input_name, input_item in inputs.inputs.items():
+        session_key = inputs.metadata["session_key"]
+        normalized_input_name = input_name.split("/")[-1]
+        
+        try:
+            # Create checkpointer with collection name, session key, and app name
+            ckpt = checkpointer.KVStoreCheckpointer(
+                collection_name="addon_checkpoints",  # KVStore collection name
+                session_key=session_key,
+                app=ADDON_NAME,
+            )
+            
+            # Read checkpoint state (returns None if not set)
+            last_state = ckpt.get(normalized_input_name)
+            
+            # On first run, initialize with defaults
+            if last_state is None:
+                last_timestamp = "2024-01-01T00:00:00Z"
+            else:
+                last_timestamp = last_state.get("last_timestamp")
+            
+            # Fetch data using checkpoint
+            session = build_session()
+            response = session.get(
+                f"{api_url}/v1/events",
+                headers={"Authorization": f"Bearer {api_key}"},
+                params={"since": last_timestamp, "limit": 100},
+                timeout=30,
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Write events and track latest timestamp
+            events = data.get("events", [])
+            for event_data in events:
+                event_writer.write_event(smi.Event(
+                    data=json.dumps(event_data, ensure_ascii=False, default=str),
+                    sourcetype="my:sourcetype",
+                    index=input_item.get("index"),
+                ))
+            
+            # Update checkpoint only after all events written
+            if events:
+                ckpt.update(normalized_input_name, {
+                    "last_timestamp": events[-1]["timestamp"],
+                })
+                logger.info(f"Fetched {len(events)} new events")
+            
+        except Exception as e:
+            logger.error(f"Collection failed: {str(e)}", exc_info=True)
+```
+
+### Checkpoint Best Practices
+
+1. **Initialize on first run**: Always provide defaults for first-run scenarios
+2. **Store sufficient state**: Include all fields needed to resume correctly (timestamp, ID, etc.)
+3. **Update after success**: Only update checkpoint after events are successfully written
+4. **Use atomic updates**: Write all state fields in one update call
+5. **Reference state by key**: Use the normalized input name as the checkpoint key
+
+## Common Patterns
+
+### Structure for Multiple Inputs
+
+If globalConfig.json defines multiple input types, you will need one helper file per input. The first helper file will be generated by `ucc-gen init` - copy if more are required.
+
+### Handling Rate Limits
+
+Check response headers and respect backoff:
+
+```python
+response = session.get(url)
+if response.status_code == 429:
+    retry_after = int(response.headers.get("Retry-After", 60))
+    logger.warning(f"Rate limited, backing off {retry_after}s")
+    time.sleep(retry_after)
+```
+
+### Testing Validation
+
+The `validate_input()` function is called when users create/edit an input:
+
+```python
+def validate_input(definition: smi.ValidationDefinition):
+    """Validate input configuration."""
+    account_name = definition.parameters.get("account")
+    api_url = definition.parameters.get("api_url")
     
-    # Step 5: Update checkpoint
-    if total_events > 0:
-        ckpt.update("last_timestamp", latest_timestamp)
-        helper.log_info(
-            f"Successfully indexed {total_events} events. "
-            f"Updated checkpoint to {latest_timestamp}"
+    # Test connectivity or credentials
+    try:
+        account = get_account_config(session_key, ADDON_NAME, account_name)
+        api_key = account.get("api_key")
+        
+        response = requests.get(
+            f"{api_url}/v1/health",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=5,
         )
-    else:
-        helper.log_info("No new events to index")
+        response.raise_for_status()
+    except Exception as e:
+        raise smi.ValidationError(f"Cannot connect to API: {str(e)}")
 ```
 
 ## Common Patterns and Anti-Patterns
 
-### ✅ DO: Use Checkpoints Properly
+### ✅ DO: Simple Pattern First (No Checkpoints)
 ```python
-# GOOD: Read checkpoint, use it, update it
-ckpt = helper.get_check_point(input_name)
-last_id = ckpt.get("last_id") or 0
-events = fetch_events(after_id=last_id)
-# ... process events ...
-if events:
-    ckpt.update("last_id", events[-1]['id'])
+# GOOD: Start simple, add checkpoints only if needed
+response = session.get(api_url, headers=headers, timeout=30)
+response.raise_for_status()
+for event in response.json()["events"]:
+    event_writer.write_event(smi.Event(
+        data=json.dumps(event),
+        sourcetype="my:sourcetype",
+        index=index,
+    ))
 ```
 
-### ❌ DON'T: Forget to Initialize Checkpoints
+### ✅ DO: Use Checkpoints Correctly (When Needed)
+```python
+# GOOD: Read checkpoint, use it, update after success
+ckpt = checkpointer.KVStoreCheckpointer(...)
+last_id = (ckpt.get(input_name) or {}).get("last_id", 0)
+events = fetch_events(after_id=last_id)
+for event in events:
+    event_writer.write_event(...)
+if events:
+    ckpt.update(input_name, {"last_id": events[-1]['id']})
+```
+
+### ❌ DON'T: Overuse Checkpoints
+```python
+# BAD: Premature optimization
+# Using checkpoints for reference data that doesn't change
+ckpt = KVStoreCheckpointer(...)  # Unnecessary!
+events = fetch_all_users()  # This never changes
+
+# GOOD: Keep it simple if data is static
+response = session.get("/v1/users")
+for user in response.json():
+    event_writer.write_event(...)  # No checkpoint needed
+```
+
+### ❌ DON'T: Forget to Initialize Checkpoints (If Using Them)
 ```python
 # BAD: Will fail on first run if None
-last_id = ckpt.get("last_id")
+last_id = ckpt.get(input_name)
 events = fetch_events(after_id=last_id)  # Error if last_id is None!
 
 # GOOD: Always provide a default
-last_id = ckpt.get("last_id") or 0
+last_id = (ckpt.get(input_name) or {}).get("last_id", 0)
 ```
 
 ### ✅ DO: Handle API Errors Gracefully
@@ -678,20 +708,6 @@ except requests.exceptions.HTTPError as e:
         helper.log_warning("Rate limited")
     else:
         helper.log_error(f"HTTP error: {e}")
-```
-
-### ❌ DON'T: Catch and Silence All Errors
-```python
-# BAD: Hides problems
-try:
-    # ... complex logic ...
-except:
-    pass  # Silent failure!
-
-# GOOD: Log and handle appropriately
-except Exception as e:
-    helper.log_error(f"Error: {str(e)}")
-    raise  # Re-raise if it's fatal
 ```
 
 ### ✅ DO: Log at Appropriate Levels
@@ -736,31 +752,12 @@ event = helper.new_event(..., data=json.dumps(event_data))
 2. **Pagination**: Don't try to fetch all data in one request
 3. **Connection pooling**: Use `requests.Session()` for multiple requests
 4. **Timeout settings**: Always set timeouts (30s is reasonable)
-5. **Checkpoint granularity**: Balance between exactness and performance
-
-## Testing Your Modular Input
-
-### Manual Testing
-1. Build the TA: `ucc-gen build`
-2. Install in Splunk: Copy to `$SPLUNK_HOME/etc/apps/`
-3. Configure input via UI
-4. Check logs: `index=_internal source=*myservice*.log`
-5. Verify events: `index=<your_index> sourcetype=<your_sourcetype>`
-
-### Common Issues
-- **No events appear**: Check permissions, API connectivity, logging
-- **Duplicate events**: Checkpoint not updating properly
-- **Missing events**: Pagination logic error or incorrect timestamp ordering
-- **Input not running**: Check interval, Python errors in splunkd.log
 
 ## Summary
 
 Key principles for modular inputs:
-1. **Always use helper methods** for config access
-2. **Implement checkpointing** to avoid duplicates
-3. **Handle errors gracefully** with proper logging
-4. **Use retries** for transient failures
-5. **Respect rate limits** from APIs
-6. **Write events with timestamps** when available
-7. **Log summary statistics** not individual events
-8. **Test thoroughly** before deployment
+- **Start simple**: Fetch and write all data on each run (no checkpoints) as the baseline
+- **Handle errors gracefully** with proper logging
+- **Write events with timestamps** when available
+- **Add checkpoints only if needed** to avoid duplicate indexing of large datasets
+- **Use stateless collection** unless the API explicitly supports incremental filters

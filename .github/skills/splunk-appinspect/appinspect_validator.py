@@ -12,6 +12,8 @@ from getpass import getpass
 import argparse
 import json
 from typing import Dict, List, Tuple, Any
+from pathlib import Path
+from dotenv import load_dotenv
 
 # Splunk API endpoints
 BASE_URL = "https://appinspect.splunk.com/v1"
@@ -28,14 +30,18 @@ def authenticate() -> str:
     Returns:
         str: Bearer token for API authentication
     """
-    token = os.getenv("APPINSPECT_TOKEN")
-    if token:
-        print("✓ Using token from APPINSPECT_TOKEN environment variable")
-        return token
+    repo_root = Path(__file__).resolve().parents[3]
+    load_dotenv(dotenv_path=repo_root / ".env")
 
-    print("APPINSPECT_TOKEN not found. Please provide credentials.\n")
-    username = input("Splunk.com username: ")
-    password = getpass("Splunk.com password: ")
+    username = os.getenv("APPINSPECT_USERNAME")
+    password = os.getenv("APPINSPECT_PASSWORD")
+
+    if username and password:
+        print("✓ Using credentials from APPINSPECT_USERNAME/APPINSPECT_PASSWORD")
+    else:
+        print("APPINSPECT_USERNAME/APPINSPECT_PASSWORD not found. Please provide credentials.\n")
+        username = input("Splunk.com username: ")
+        password = getpass("Splunk.com password: ")
 
     print("\nAuthenticating...")
     try:
@@ -55,9 +61,6 @@ def authenticate() -> str:
     token = data["data"]["token"]
     
     print("✓ Authentication successful!\n")
-    print("To skip authentication in future runs, set this environment variable:")
-    print(f"  export APPINSPECT_TOKEN={token}\n")
-    
     return token
 
 
@@ -332,7 +335,8 @@ Examples:
   %(prog)s my_app.tar.gz --quiet
 
 Environment Variables:
-  APPINSPECT_TOKEN    Bearer token to skip authentication
+  APPINSPECT_USERNAME    Splunk.com username (optional)
+  APPINSPECT_PASSWORD    Splunk.com password (optional)
         """
     )
     

@@ -1,168 +1,64 @@
 # Splunk AppInspect Skill
 
-A GitHub Copilot skill for validating Splunk app packages using the AppInspect REST API.
+Validate a packaged Splunk app by running the provided appinspect_validator.py script and summarizing results.
+
+Used over `ucc-gen validate` as a) that requires libmagic and b) that uses local appinspect, which may not provide as complete/up-to-date testing as the REST API.
 
 ## Quick Start
 
 ```bash
-# Run validation
-uv run --with requests python3 appinspect_validator.py my_app.tar.gz
+# Recommended: run with uv (no local install required)
+uv run --with requests python3 appinspect_validator.py /path/to/app.tar.gz
 
-# or without uv - with with a venv active
-pip install requests
-python3 appinspect_validator.py my_app.tar.gz
+# Or run inside a venv with requests installed
+python3 appinspect_validator.py /path/to/app.tar.gz
 ```
 
 ## Authentication
 
-### Option 1: Interactive (prompted each time)
+The script reads credentials from the `.env` file in the repository root:
+- `APPINSPECT_USERNAME` - Your Splunk.com username
+- `APPINSPECT_PASSWORD` - Your Splunk.com password
+
+If the `.env` file is missing or credentials are not found, the script will prompt you interactively for your Splunk.com username and password.
+
+## Usage
+
 ```bash
-./appinspect_validator.py my_app.tar.gz
-# You'll be prompted for username and password
-```
+# Basic validation
+python3 appinspect_validator.py /path/to/app.tar.gz
 
-### Option 2: Environment Variable (recommended)
-```bash
-# Set the token once
-export APPINSPECT_TOKEN="your_token_here"
+# Quiet summary only
+python3 appinspect_validator.py /path/to/app.tar.gz --quiet
 
-# Then run without prompts
-./appinspect_validator.py my_app.tar.gz
-```
-
-The script will display your token after first authentication so you can set it as an environment variable.
-
-## Usage Examples
-
-### Basic validation
-```bash
-./appinspect_validator.py my_app.tar.gz
-```
-
-### Quiet mode (summary only)
-```bash
-./appinspect_validator.py my_app.tar.gz --quiet
-```
-
-### Extended polling for large apps
-```bash
-./appinspect_validator.py my_app.tar.gz --max-attempts 20
-```
-
-### Use in CI/CD
-```bash
-#!/bin/bash
-# In your CI pipeline
-
-export APPINSPECT_TOKEN="${SECRET_APPINSPECT_TOKEN}"
-
-if ./appinspect_validator.py dist/my_app.tar.gz; then
-    echo "Validation passed! Proceeding with deployment..."
-else
-    echo "Validation failed! Fix issues before deploying."
-    exit 1
-fi
+# Poll longer for large apps
+python3 appinspect_validator.py /path/to/app.tar.gz --max-attempts 20
 ```
 
 ## Output
 
-The script generates:
+The script:
+- Prints a summary of errors, failures, warnings, and manual checks.
+- Saves a JSON report as `appinspect_report_<request_id>.json`.
 
-1. **Console output**: Formatted summary with color-coded issues
-2. **JSON report**: `appinspect_report_<request_id>.json` with full details
+Agent workflow:
+- Copy the full printed summary into the chat response.
+- Call out any errors and failures explicitly, even if they appear in the summary.
 
-### Exit Codes
+### What to do next
 
-- `0` - Validation passed (no errors or failures)
-- `1` - Validation failed (errors or failures present)
-- `2` - API error, timeout, or other issue
+1. Fix all errors and failures first.
+2. Review warnings and manual checks.
+3. Re-run validation until the package passes.
 
-## Example Output
+## Exit Codes
 
-```
-✓ Using token from APPINSPECT_TOKEN environment variable
-Submitting package: my_app.tar.gz
-✓ Package submitted successfully
-  Request ID: 1234abcd-5678-efgh-9012-ijklmnopqrst
+- `0` pass (no errors or failures)
+- `1` fail (errors or failures present)
+- `2` script or API error
 
-Polling validation status...
-  [1/15] Status: PROCESSING
-  [2/15] Status: PROCESSING
-  [3/15] Status: SUCCESS
-✓ Validation completed!
+## Sample Copilot Prompts
 
-Retrieving validation report...
-✓ Report saved to: appinspect_report_1234abcd-5678-efgh-9012-ijklmnopqrst.json
-
-======================================================================
-SPLUNK APPINSPECT VALIDATION SUMMARY
-======================================================================
-
-📊 Overview:
-  ✓ Success:         145
-  ✗ Failures:          2
-  ⚠ Warnings:          5
-  ❌ Errors:            0
-  👁 Manual Checks:    1
-  ⊘ Not Applicable:   50
-  ⊗ Skipped:           0
-
-✗ FAILURES - Must fix for Splunkbase submission (2):
-----------------------------------------------------------------------
-
-1. check_readme_exists
-   Group: packaging_standards
-   • README file not found in app root directory
-     📄 File: N/A
-     🔖 Code: MISSING_README
-
-2. check_license_file
-   Group: licensing
-   • LICENSE or COPYING file not found
-     🔖 Code: MISSING_LICENSE
-
-⚠ WARNINGS - Recommended fixes for best practices (5):
-----------------------------------------------------------------------
-
-1. check_app_description
-   Group: appapproval
-   • App description in app.conf should be more detailed
-     📄 File: default/app.conf (line 5)
-
-...
-
-======================================================================
-❌ FAIL: 2 critical issue(s) must be resolved
-   Fix all errors and failures before submitting to Splunkbase.
-======================================================================
-```
-
-## Common Issues and Fixes
-
-| Issue | Fix |
-|-------|-----|
-| Authentication failed | Verify credentials at splunk.com |
-| File not found | Check package path and file extension |
-| Validation timeout | Increase `--max-attempts` for large apps |
-| Token expired | Remove and re-authenticate to get new token |
-
-## Requirements
-
-- Python 3.6+
-- `requests` library: `pip install requests`
-- Splunk.com account (free)
-
-## For GitHub Copilot
-
-This skill is automatically available when the `.github/skills/splunk-appinspect/` directory is present in your repository. Copilot will suggest using it when working with Splunk apps.
-
-Ask Copilot:
-- "Validate my Splunk app with AppInspect"
-- "Check if my app passes AppInspect requirements"
-- "Run AppInspect on the package"
-
-## Resources
-
-- [AppInspect API Documentation](https://dev.splunk.com/enterprise/docs/developapps/testvalidate/appinspect/useappinspectapi/)
-- [Splunk Packaging Standards](https://dev.splunk.com/enterprise/docs/developapps/createapps/createpackaging/)
-- [AppInspect CLI Alternative](https://dev.splunk.com/enterprise/docs/developapps/testvalidate/appinspect/)
+- "Run AppInspect validation on the packaged TA and summarize failures."
+- "Validate this app package and tell me what must be fixed before submission."
+- "Use the AppInspect validator on the .tar.gz and save the report."

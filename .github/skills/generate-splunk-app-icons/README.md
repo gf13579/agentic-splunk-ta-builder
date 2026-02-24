@@ -1,6 +1,6 @@
 # Splunk App Icon Generator Skill
 
-This GitHub Copilot agent skill helps generate complete icon sets for Splunk app submissions.
+This skill helps generate complete icon sets for Splunk app submissions.
 
 ## File Structure
 
@@ -13,7 +13,7 @@ This GitHub Copilot agent skill helps generate complete icon sets for Splunk app
 
 ## How It Works
 
-When GitHub Copilot recognizes that a user wants to generate Splunk app icons, it will:
+When the coding agent recognizes that a user wants to generate Splunk app icons, it should:
 
 1. Prompt the user for required information (1-2 character text)
 2. Optionally ask about customization (colors, border options)
@@ -34,7 +34,7 @@ TA-myservice/
         └── appIconAlt_2x.png
 ```
 
-When `ucc-gen build` runs, these icons will be copied to the final TA package's `static/` directory. If we find an output/<TA-name>/static folder - i.e. ucc-build has already been run - let's copy our new icons to that folder too. Never copy icons into any of the `appserver/static/` folders - this is not the right place for icon files
+When `ucc-gen build` runs, these icons will be copied to the final TA package's `static/` directory. If we find an output/<TA-name>/static folder - i.e. `ucc-gen build` has already been run - let's copy our new icons to that folder too. Never copy icons into any of the `appserver/static/` folders - this is not the right place for icon files
 
 ## Generated Files
 

@@ -54,27 +54,31 @@ You can also run the validator directly:
 
 ## Setting up Authentication
 
-### Option 1: Environment Variable (Recommended for CI/CD)
-```bash
-# Get your token first by running the script once
-export APPINSPECT_TOKEN="your_token_here"
+### Option 1: .env file (Recommended for local development)
+1. Create a `.env` file in the root of your repository
+2. Add your Splunk.com credentials:
+   ```
+   APPINSPECT_USERNAME=your_username
+   APPINSPECT_PASSWORD=your_password
+   ```
+3. The script will automatically read these credentials and skip interactive prompts
 
-# Add to your shell profile for persistence
-echo 'export APPINSPECT_TOKEN="your_token_here"' >> ~/.bashrc
-```
+### Option 2: Interactive Prompts (default)
+If the `.env` file is missing or credentials are not found, the script will prompt you interactively for your Splunk.com username and password each time you run it.
 
-### Option 2: GitHub Secrets (for CI/CD workflows)
+### Option 3: GitHub Actions (for CI/CD workflows)
 1. Go to your repository → Settings → Secrets and variables → Actions
 2. Click "New repository secret"
-3. Name: `APPINSPECT_TOKEN`
-4. Value: Your token from the first run
-5. Click "Add secret"
+3. Name: `APPINSPECT_USERNAME`, Value: Your Splunk.com username
+4. Click "New repository secret" again
+5. Name: `APPINSPECT_PASSWORD`, Value: Your Splunk.com password
 
 Then in your GitHub Actions workflow:
 ```yaml
 - name: Validate with AppInspect
   env:
-    APPINSPECT_TOKEN: ${{ secrets.APPINSPECT_TOKEN }}
+    APPINSPECT_USERNAME: ${{ secrets.APPINSPECT_USERNAME }}
+    APPINSPECT_PASSWORD: ${{ secrets.APPINSPECT_PASSWORD }}
   run: |
     .github/skills/splunk-appinspect/appinspect_validator.py dist/myapp.tar.gz
 ```
@@ -135,7 +139,8 @@ jobs:
       
       - name: Run AppInspect
         env:
-          APPINSPECT_TOKEN: ${{ secrets.APPINSPECT_TOKEN }}
+          APPINSPECT_USERNAME: ${{ secrets.APPINSPECT_USERNAME }}
+          APPINSPECT_PASSWORD: ${{ secrets.APPINSPECT_PASSWORD }}
         run: |
           .github/skills/splunk-appinspect/appinspect_validator.py myapp.tar.gz
       
@@ -160,7 +165,8 @@ validate_app:
     paths:
       - appinspect_report_*.json
   variables:
-    APPINSPECT_TOKEN: $APPINSPECT_TOKEN
+    APPINSPECT_USERNAME: $APPINSPECT_USERNAME
+    APPINSPECT_PASSWORD: $APPINSPECT_PASSWORD
 ```
 
 ## Next Steps
