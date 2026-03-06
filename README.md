@@ -2,6 +2,8 @@
 
 This project provides an **agentic development framework** that enables you to generate complete, production-ready Splunk Technology Add-ons by simply describing your API to an LLM (like GitHub Copilot, Claude, or ChatGPT). No more manually writing boilerplate configuration files or setting up complex project structures—just provide your API documentation and let the AI build your TA.
 
+![Agentic Splunk TA Builder Workflow](images/agentic-ta-creation-screenie.png)
+
 ## Purpose
 
 Enable AI agents (like GitHub Copilot) to automatically generate production-ready Splunk TAs from API documentation using the UCC (Universal Configuration Console) framework.
@@ -42,18 +44,22 @@ The main orchestration agent that:
 
 ### Skills (`.github/skills/`)
 Domain-specific knowledge modules that handle:
-- **ucc-config-generator**: Creates UCC structure and `globalConfig.json`
+- **ucc-init**: Initializes UCC structure and creates the initial `globalConfig.json`
+- **ucc-build-and-package**: Builds and packages the TA with UCC
 - **splunk-modular-input**: Implements data collection logic
 - **splunk-custom-command**: Creates custom SPL commands
 - **generate-splunk-app-icons**: Generates app icon sets
 - **splunk-appinspect**: Validates packages against Splunk standards
+- **ucc-config-generator**: Deprecated legacy skill (do not use for new work)
 
 ## How It Works
 
 1. Developer provides API documentation and add-on metadata
-2. Agent analyzes API to determine required components
-3. Skills are invoked to generate configuration, code, and assets
-4. Package is built, validated, and delivered ready for Splunkbase
+2. Agent analyzes API and decides components (inputs/commands/alerts)
+3. `ucc-init` creates structure and baseline `globalConfig.json`
+4. Specialized skills add inputs/commands, helper logic, and icons
+5. `ucc-build-and-package` builds and packages the TA
+6. `splunk-appinspect` validates the package for submission readiness
 
 ## Usage
 

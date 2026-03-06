@@ -15,6 +15,99 @@ Use this skill when writing Python code for Splunk modular inputs in UCC-based a
 
 **Dependency note:** If you add third-party imports beyond the default UCC set, update `package/lib/requirements.txt` with each new package on its own line. UCC includes `requests`, `solnlib`, and `splunk-sdk` by default.
 
+## Making changes to globalConfig.json
+
+Before writing any replacements to large json files like globalConfig.json, output the target structure as a code block and reason about which existing text it replaces in full.
+
+Replace the entire object (e.g. "configuration") when possible to avoid syntax errors and incorrect nesting caused by simultaneous replacement using the multi_replace_string_in_file tool that may conflict with each other.
+
+## Editing globalConfig.json for Account Parameters
+
+It's common for APIs to require credentials and base URLs. These should be added as configurable fields in the account configuration section of `globalConfig.json`. An example is provided below - where API URL has been added to the standard account fields created by the UCC init command:
+
+```json
+        "configuration": {
+            "tabs": [
+                {
+                    "name": "account",
+                    "table": {
+                        "actions": [
+                            "edit",
+                            "delete",
+                            "clone"
+                        ],
+                        "header": [
+                            {
+                                "label": "Name",
+                                "field": "name"
+                            }
+                        ]
+                    },
+                    "entity": [
+                        {
+                            "type": "text",
+                            "label": "Name",
+                            "validators": [
+                                {
+                                    "type": "regex",
+                                    "errorMsg": "Account Name must begin with a letter and consist exclusively of alphanumeric characters and underscores.",
+                                    "pattern": "^[a-zA-Z]\\w*$"
+                                },
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of input name should be between 1 and 100",
+                                    "minLength": 1,
+                                    "maxLength": 100
+                                }
+                            ],
+                            "field": "name",
+                            "help": "A unique name for the account.",
+                            "required": true
+                        },
+                        {
+                            "type": "text",
+                            "label": "API URL",
+                            "field": "api_url",
+                            "help": "Base URL for the Threat Intelligence API.",
+                            "required": true,
+                            "defaultValue": "https://api.example.com",
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of API URL should be between 8 and 2048",
+                                    "minLength": 8,
+                                    "maxLength": 2048
+                                }
+                            ]
+                        },
+                        {
+                            "type": "text",
+                            "label": "API key",
+                            "field": "api_key",
+                            "help": "API key",
+                            "required": true,
+                            "encrypted": true,
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of API key should be between 1 and 50",
+                                    "minLength": 1,
+                                    "maxLength": 50
+                                }
+                            ]
+                        }
+                    ],
+                    "title": "Accounts"
+                },
+                {
+                    "type": "loggingTab"
+                }
+            ],
+            "title": "Configuration",
+            "description": "Set up your add-on"
+        }
+```
+
 ## Editing globalConfig.json for Custom Input Parameters
 
 Before implementing the helper file logic, you may need to edit `globalConfig.json` to expose API parameters as configurable fields in the UI.
@@ -53,7 +146,7 @@ In `globalConfig.json`, locate the `pages.inputs.services[]` array and add field
               "type": "text",
               "label": "Limit",
               "field": "limit",
-              "defaultValue": "100",
+              "defaultValue": "1000",
               "help": "Maximum number of results per collection run",
               "validators": [
                 {
@@ -104,7 +197,7 @@ Once defined in globalConfig.json, access these fields in your `stream_events()`
 def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
     for input_name, input_item in inputs.inputs.items():
         # Access custom parameters
-        limit = input_item.get("limit", "100")  # With default fallback
+        limit = input_item.get("limit", "1000")  # With default fallback
         ioc_type = input_item.get("ioc_type", "all")
         
         # Use in API call
@@ -184,6 +277,40 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
 - `inputs.inputs`: Dictionary of configured inputs (can be multiple if the input is instantiated multiple times)
 - `input_item`: Configuration values for the current input instance
 - `event_writer`: Object with `write_event()` method
+
+## Handling API Base URLs
+
+API base URLs should be:
+1. **Configurable in globalConfig.json** (account configuration)
+2. **Retrieved from account settings** at runtime
+
+For example, if one base URL is required, add an `api_url` field to the account configuration:
+```json
+{
+  "name": "account",
+  "entity": [
+    {
+      "type": "text",
+      "label": "API URL",
+      "field": "api_url",
+      "defaultValue": "https://api.example.com",
+      "help": "Base URL for the API endpoint"
+    },
+    ...
+  ]
+}
+```
+
+**Never** hard-code API URLs in the helper files.
+
+**Never** use a validator to require that URLs start with "https". http is fine.
+
+Example code to retrieve a base API url from account configuration:
+
+```python
+account_config = get_account_config(session_key, account_name)
+api_url = account_config.get("api_url", "https://api.example.com")
+```
 
 ## Getting Configuration Values
 
@@ -752,6 +879,22 @@ event = helper.new_event(..., data=json.dumps(event_data))
 2. **Pagination**: Don't try to fetch all data in one request
 3. **Connection pooling**: Use `requests.Session()` for multiple requests
 4. **Timeout settings**: Always set timeouts (30s is reasonable)
+
+## Documentation Requirements
+
+After implementing modular inputs, document them in `package/README.txt` (to be updated before the build and package phase). For each modular input, include:
+
+1. **Input Name:** Machine name used in `inputs.conf` (e.g., `threat_feed`)
+2. **Description:** Human-readable purpose of the input
+3. **Data Collected:** What events or data this input collects
+4. **Required Configuration:**
+   - Which account/credentials are needed
+   - Any custom parameters (e.g., `limit`, `filters`, `ioc_type`) and their default values
+   - Typical polling interval recommendations
+   - Index destination
+5. **Example Configuration:** Show sample input setup from the UI or `inputs.conf` example
+
+This documentation helps users understand what data each input collects and how to configure it for their use case.
 
 ## Summary
 

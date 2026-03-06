@@ -86,6 +86,19 @@ def deploy_package(
             f"Install failed ({response.status_code}): {response.text.strip()}"
         )
 
+    restart_url = f"{api_url.rstrip('/')}/services/server/control/restart"
+    restart_response = requests.post(
+        restart_url,
+        auth=(username, password),
+        verify=verify_tls,
+        timeout=120,
+    )
+    if restart_response.status_code not in (200, 201):
+        raise RuntimeError(
+            "Restart failed "
+            f"({restart_response.status_code}): {restart_response.text.strip()}"
+        )
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(

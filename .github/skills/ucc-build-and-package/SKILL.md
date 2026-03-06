@@ -12,25 +12,35 @@ Use this skill after UCC initialization and after all updates to `globalConfig.j
 - `globalConfig.json` is valid and up to date
 - Modular input helpers and custom command logic files are in place
 - Any required dependencies are listed in `package/lib/requirements.txt`
+- `package/README.txt` is updated with add-on overview, setup instructions, modular input documentation (if applicable), custom search command usage examples (if applicable), and troubleshooting guidance
 
 ## Build
 Run from the TA root and always point `--source` to `package/`:
 
-Prefer `uv` when available:
+⚠️ **CRITICAL**: UCC's build process internally runs `pip install` to download dependencies from `package/lib/requirements.txt`. Using `uv run --with` creates an ephemeral Python environment without `pip`, causing the build to fail. **Use a persistent virtual environment instead:**
+
 ```bash
 cd TA-myservice
-uv run --with splunk-add-on-ucc-framework ucc-gen build --source package --ta-version 1.0.0
+
+# Create and activate virtual environment (one-time setup)
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install UCC framework
+pip install splunk-add-on-ucc-framework
+
+# Build the add-on
+ucc-gen build --source package --ta-version 1.0.0
 ```
 
 Note: `ucc-gen build` may update `globalConfig.json` (for example, schema version). If the system reports the file changed, re-open it before making further edits.
 
-Fallback to venv + pip only if `uv` is unavailable.
-
 ## Package
-Package the built add-on from the TA root:
+Package the built add-on from the TA root (using the same venv):
 ```bash
 cd TA-myservice
-uv run --with splunk-add-on-ucc-framework ucc-gen package --path output/TA-myservice
+source .venv/bin/activate  # Activate the same venv used for build
+ucc-gen package --path output/TA-myservice
 ```
 
 ## Optional Validation Hook

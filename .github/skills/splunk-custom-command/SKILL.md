@@ -48,6 +48,15 @@ UCC supports three types of custom search commands:
 
 **This skill focuses on generating commands** for API data retrieval, as they are most common for API-based add-ons.
 
+---
+
+## Making changes to globalConfig.json
+
+Before writing any replacements to large json files like globalConfig.json, output the target structure as a code block and reason about which existing text it replaces in full.
+
+Replace the entire object (e.g. "configuration") when possible to avoid syntax errors and incorrect nesting caused by simultaneous replacement using the multi_replace_string_in_file tool that may conflict with each other.
+
+
 ## Implementation Steps
 
 ### Step 1: Define Command in globalConfig.json
@@ -95,6 +104,117 @@ Add a `customSearchCommand` array at the root level of `globalConfig.json` (same
 }
 ```
 
+## ⚠️ CRITICAL: Common Schema Validation Mistakes
+
+**These errors occur frequently and prevent the build from succeeding. Read carefully:**
+
+### Mistake 1: Location in globalConfig.json
+
+❌ **WRONG** - `customSearchCommand` inside `pages`:
+```json
+{
+    "meta": {...},
+    "pages": {
+        "configuration": {...},
+        "customSearchCommand": [...]  // ❌ WRONG LOCATION!
+    }
+}
+```
+
+✅ **CORRECT** - `customSearchCommand` at ROOT level (same as `meta` and `pages`):
+```json
+{
+    "meta": {...},
+    "pages": {...},
+    "customSearchCommand": [...]  // ✅ CORRECT!
+}
+```
+
+### Mistake 2: Property Names
+
+❌ **WRONG** - Using incorrect property names:
+```json
+{
+    "name": "mycommand",              // ❌ Should be "commandName"
+    "displayName": "My Command",      // ❌ Not a valid property
+    "filename": "mycommand.py",       // ❌ Should be "fileName" (camelCase)
+    "description": "..."
+}
+```
+
+✅ **CORRECT** - Using UCC schema property names:
+```json
+{
+    "commandName": "mycommand",       // ✅ CORRECT
+    "fileName": "mycommand_logic.py", // ✅ CORRECT (camelCase)
+    "commandType": "generating",      // ✅ REQUIRED
+    "arguments": [...]                // ✅ REQUIRED (even if empty, need at least one)
+}
+```
+
+### Mistake 3: Command Naming Convention
+
+❌ **WRONG** - Command name contains underscores, hyphens, or uppercase:
+```json
+{
+    "commandName": "my_command",      // ❌ Underscores not allowed
+    "commandName": "my-command",      // ❌ Hyphens not allowed
+    "commandName": "MyCommand"        // ❌ Uppercase not allowed
+}
+```
+
+✅ **CORRECT** - Only lowercase alphanumerics (a-z, 0-9):
+```json
+{
+    "commandName": "mycommand",       // ✅ GOOD
+    "commandName": "tireputationip",  // ✅ GOOD (all lowercase, no separators)
+    "commandName": "ipreputation",    // ✅ GOOD
+    "commandName": "userinfo"         // ✅ GOOD
+}
+```
+
+**Pattern rule:** `^[a-z0-9]+$` - If your command name contains underscores or hyphens, remove them.
+
+### Mistake 4: Missing Required Properties
+
+❌ **WRONG** - Omitting required fields:
+```json
+{
+    "commandName": "mycommand",
+    "fileName": "mycommand_logic.py"
+    // ❌ Missing commandType and arguments!
+}
+```
+
+✅ **CORRECT** - All required properties present:
+```json
+{
+    "commandName": "mycommand",
+    "fileName": "mycommand_logic.py",
+    "commandType": "generating",      // ✅ REQUIRED
+    "arguments": [                    // ✅ REQUIRED
+        {
+            "name": "query",
+            "required": true
+        }
+    ]
+}
+```
+
+**Required fields:** `commandName`, `fileName`, `commandType`, `arguments` (array with at least 1 item)
+
+### Validate Before Building
+
+After editing `globalConfig.json` with your custom commands, **always validate** using the validate-ucc-json skill before running the build:
+
+```bash
+uv run --with jsonschema,requests python3 .github/skills/validate-ucc-json/validate_ucc_schema.py /path/to/globalConfig.json
+```
+
+This catches schema errors early and shows you exactly what's wrong.
+
+---
+
 ### Step 2: Create the Python Logic File
 
 **CRITICAL:** UCC generates a wrapper file (e.g., `myapicommand.py`) automatically. You must create the **logic file** specified in `fileName` (e.g., `myapicommand_logic.py`) in the `package/bin/` directory. The logic file is independent of splunklib.searchcommands - it's generic Python code that the wrapper will call via its `generate` function.
@@ -104,6 +224,8 @@ Add a `customSearchCommand` array at the root level of `globalConfig.json` (same
 - **Logic file** (YOU create): Matches `fileName` in config (e.g., `myapicommand_logic.py`)
 
 **Required function:** For generating commands, your logic file must contain a `generate` function. The logic file must not import from splunklib.searchcommands directly; instead, it should define the `generate` function that the wrapper will call.
+
+When yielding results, be sure to included a "_raw" field - set to json.dumps(your_result_dict) along with "_time" in epoch format, typically set to `time.time()` unless your API provides a timestamp.
 
 ### Step 3: Update add-on dependencies
 
@@ -885,25 +1007,6 @@ class ThreatIntelClient:
             raise
 ```
 
-## Usage Examples
-
-Once deployed, users can run the custom command in Splunk:
-
-```spl
-| threatintel indicator="192.168.1.100" type="ip" limit=10
-```
-
-```spl
-| threatintel indicator="evil.com" type="domain"
-```
-
-```spl
-index=firewall src_ip=*
-| dedup src_ip
-| map search="| threatintel indicator=$src_ip$ type=\"ip\" limit=1"
-| where malicious="true"
-```
-
 ## Best Practices
 
 ### 1. Error Handling
@@ -941,25 +1044,6 @@ index=firewall src_ip=*
 - Don't log sensitive data (API keys, passwords)
 - Validate and sanitize user inputs
 
-## Common Issues
-
-### Build fails: "File not found"
-- Ensure logic file exists at `package/bin/<fileName>.py`
-- Check `fileName` matches exactly in globalConfig.json
-
-### Command not found in Splunk
-- Restart Splunk after installation
-- Check `commands.conf` was generated in output
-
-### "No API account configured" error
-- Configure account in add-on setup page
-- Verify configuration is saved correctly
-
-### API authentication fails
-- Check API key is correct and not expired
-- Verify API URL is reachable from Splunk server
-- Check proxy settings if required
-
 ## Generated Files
 
 When you run `ucc-gen build`, UCC generates:
@@ -985,16 +1069,17 @@ When you run `ucc-gen build`, UCC generates:
    usage = public
    ```
 
-## Summary
+## Documentation Requirements
 
-This skill enables you to:
+After implementing custom search commands, document them in `package/README.txt` (to be updated before the build and package phase). For each custom command, include:
 
-1. ✅ Define custom search commands in `globalConfig.json`
-2. ✅ Implement Python logic files with API client code
-3. ✅ Handle authentication, errors, and logging properly
-4. ✅ Transform API responses to Splunk events
-5. ✅ Provide search assistant integration
-6. ✅ Follow Splunk best practices and conventions
+1. **Command Name:** Exact SPL syntax (e.g., `threatintel_lookup`)
+2. **Description:** What the command does in plain language
+3. **Usage Syntax:** Parameter names, types, and which are required vs. optional
+4. **Examples:** At least 1 practical SPL example showing how to use the command:
+   - Example of the command alone: `| threatintel_lookup ip="1.2.3.4"` - returns threat intel data
+5. **Output Fields:** List of fields the command returns (e.g., `threat_level`, `last_seen`, `reputation_score`)
+
 
 **Remember:** Create/update the **logic file** (specified in `fileName`), not the wrapper file (specified in `commandName`). UCC generates the wrapper automatically.
 

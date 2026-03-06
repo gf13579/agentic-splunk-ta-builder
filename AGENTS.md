@@ -4,7 +4,7 @@
 Generate production-ready Splunk Technology Add-ons (TAs) using the UCC (Universal Configuration Console) framework from API documentation or specifications. The TA should be ready to pass AppInspect validation and be published to Splunkbase.
 
 ## Overview
-This agent orchestrates the end-to-end creation of Splunk TAs by analyzing API documentation, making architectural decisions, and coordinating specialized skills to generate complete, working add-ons. The agent focuses on understanding requirements, making design decisions, and delegating detailed implementation to domain-specific skills.
+This agent orchestrates the end-to-end creation of Splunk TAs by analyzing API documentation, making architectural decisions, and coordinating specialized skills to generate complete, working add-ons. The agent focuses on understanding requirements, making design decisions, and delegating detailed implementation to domain-specific skills. API/vendor documentation analysis is centralized here to avoid duplicated or conflicting decisions across skills.
 
 ## What the Developer Provides
 
@@ -13,8 +13,6 @@ This agent orchestrates the end-to-end creation of Splunk TAs by analyzing API d
 - Add-on metadata:
   - Add-on name (e.g., `TA-myservice`)
   - Display name (e.g., `My Service Add-on for Splunk`)
-  - Brief description of the service/API
-  - Author information
 
 **Optional Input:**
 - Authentication details (API key, OAuth, basic auth patterns)
@@ -41,6 +39,51 @@ This agent orchestrates the end-to-end creation of Splunk TAs by analyzing API d
 ## High-Level Workflow
 
 ### Phase 1: Analysis & Design
+**Confirm required metadata before proceeding:**
+- If add-on name or display name is missing, infer sensible defaults from the API/service name and use `ask_questions` to confirm.
+- Always provide two options in `ask_questions`: the inferred default (recommended) and a prompt for a custom value.
+- Do not proceed to `ucc-init` until the user confirms the required metadata.
+
+**Example `ask_questions` prompt:**
+```json
+{
+  "questions": [
+    {
+      "header": "Add-on name",
+      "question": "Select the add-on name to use.",
+      "options": [
+        {
+          "label": "TA-cisco-umbrella",
+          "description": "Inferred from Cisco Umbrella API",
+          "recommended": true
+        },
+        {
+          "label": "Enter a custom add-on name",
+          "description": "Provide your own add-on name"
+        }
+      ],
+      "allowFreeformInput": true
+    },
+    {
+      "header": "Display name",
+      "question": "Select the display name to use.",
+      "options": [
+        {
+          "label": "Cisco Umbrella Add-on for Splunk",
+          "description": "Inferred from Cisco Umbrella API",
+          "recommended": true
+        },
+        {
+          "label": "Enter a custom display name",
+          "description": "Provide your own display name"
+        }
+      ],
+      "allowFreeformInput": true
+    }
+  ]
+}
+```
+
 **Analyze API documentation** to identify:
 - Authentication methods and patterns
 - Available endpoints and data types
@@ -49,19 +92,60 @@ This agent orchestrates the end-to-end creation of Splunk TAs by analyzing API d
 
 **Make architectural decisions** about which components to build using the decision criteria below.
 
+**Analysis outputs (inputs for skills):**
+- Add-on metadata (name, display name, version)
+- Auth scheme and credential fields
+- Inputs to create (names, endpoints, polling cadence, checkpoint strategy)
+- Custom commands to create (command names, arguments, lookup semantics)
+- Alert actions to create (if applicable)
+- CIM alignment targets (if requested)
+
+**Cross-skill contract (structured outputs):**
+- `addon`: `name`, `display_name`, `version`
+- `auth`: `type`, `fields`, `token_location`, `oauth_flow` (if applicable)
+- `inputs`: list of `{name, endpoint, interval_default, checkpoint_key, pagination, sourcetype, index_default, custom_params: [{field_name, field_type, default_value, help_text, validators}]}`
+- `commands`: list of `{command_name, file_name, command_type, args, description, syntax, usage}`
+- `alerts`: list of `{name, endpoint, method, fields}`
+- `cim`: list of `{data_type, mapped_fields, sourcetype}`
+
 ### Phase 2: Implementation
 **Coordinate skills** to build the TA:
-- Use `ucc-config-generator` skill for UCC structure, `globalConfig.json`, and build process
+- Use `ucc-init` skill for UCC structure and initial `globalConfig.json`
+- Edit `globalConfig.json` to define custom input parameters (if any) and custom commands before implementation
+- Validate `globalConfig.json` using the `validate-ucc-json` skill to catch schema errors early
 - Use `splunk-modular-input` skill to **modify** auto-generated helper files (*_helper.py) with API client logic
 - Use `splunk-custom-command` skill to define custom commands in `globalConfig.json` and create Python implementation files
-- Use `generate-splunk-app-icons` skill for app icons
+- Use `generate-splunk-app-icons` skill for app icons (run from TA directory, then move to `appserver/static/`)
+- Use `ucc-build-and-package` skill to build and package the TA (requires venv, not `uv`; see skill docs for details)
 
-### Phase 3: Validation & Delivery
+### Phase 3: Validation, Documentation & Delivery
 **Validate and package** the TA:
-- Build and package using UCC framework
+- Build and package using UCC framework.
 - Use `splunk-appinspect` skill for validation
 - Fix critical findings and re-validate
-- Generate documentation and deliver package
+- Update documentation in `package/README.txt` and deliver package
+
+**README.txt Documentation Requirements:**
+Create comprehensive `package/README.txt` that includes:
+
+1. **Add-on Overview** (required)
+   - Brief description of what the add-on does
+   - Name of the service/API it integrates with
+   - What data/capabilities it provides to Splunk
+
+2. **Setup & Installation** (required)
+   - Credential requirements (API keys, OAuth, basic auth patterns)
+   - Configuration steps (where to enter credentials in the configuration UI)
+   - Any required account setup or prerequisites
+
+3. **Modular Inputs Documentation** 
+
+4. **Custom Search Commands Documentation** 
+
+5. **Troubleshooting** (recommended)
+   - Common issues and how to resolve them
+   - Where to find logs (`$SPLUNK_HOME/var/log/splunk/ta_*.log`)
+   - How to enable debug logging
 
 ## Decision Criteria
 
@@ -100,22 +184,26 @@ Use these criteria to determine which TA components to build:
 The TA is ready for delivery when:
 - [ ] UCC build completes without errors
 - [ ] App icons generated and placed in `appserver/static/`
-- [ ] Package installs cleanly in Splunk
-- [ ] Configuration UI renders correctly
-- [ ] Data collection works (for scripted inputs)
-- [ ] Commands return valid results (for custom commands)
 - [ ] AppInspect validation passes or has only minor/informational findings
-- [ ] README includes clear setup instructions
+- [ ] `package/README.txt` includes:
+  - [ ] High-level overview of the add-on and service integration
+  - [ ] Setup and credential configuration instructions
+  - [ ] Modular input documentation (if applicable) with example configurations
+  - [ ] Custom search command documentation (if applicable) with a usage example
+  - [ ] Troubleshooting and logging guidance
+- [ ] User is advised that they need to manually test end-to-end functionality (installs in Splunk, config UI works, modular inputs and custom commands work)
 
 ## Skill References
 
 This agent coordinates the following specialized skills:
 
-- **[ucc-config-generator](.github/skills/ucc-config-generator/SKILL.md)**: Creates UCC structure, `globalConfig.json`, builds, and packages the TA
+- **[ucc-init](.github/skills/ucc-init/SKILL.md)**: Initializes UCC structure and creates initial `globalConfig.json`
+- **[ucc-build-and-package](.github/skills/ucc-build-and-package/SKILL.md)**: Builds and packages the TA with UCC
 - **[splunk-modular-input](.github/skills/splunk-modular-input/SKILL.md)**: Modifies auto-generated Python helper files (*_helper.py) with API collection logic. Does NOT create new standalone modular input files.
 - **[splunk-custom-command](.github/skills/splunk-custom-command/SKILL.md)**: Defines custom commands in `globalConfig.json` and creates Python implementation files in `package/bin/` for API-based data retrieval, enrichment, or search operations.
 - **[generate-splunk-app-icons](.github/skills/generate-splunk-app-icons/SKILL.md)**: Generates Splunk app icon sets
 - **[splunk-appinspect](.github/skills/splunk-appinspect/SKILL.md)**: Validates packages using the AppInspect API
+- **[ucc-config-generator](.github/skills/ucc-config-generator/SKILL.md)**: Deprecated legacy skill. Do not use for new work.
 
 ## Key Principles
 
@@ -124,37 +212,44 @@ This agent coordinates the following specialized skills:
 3. **Validate early**: Run AppInspect validation as soon as a package is built
 4. **Document clearly**: Provide setup instructions and configuration examples
 5. **Follow standards**: Adhere to Splunk's packaging and coding standards
-6. **Use proper Python dependency management**:
-   - **Prefer `uv`** for running tools with dependencies (no installation needed):
+6. **Target Python 3.9**: Keep code and type hints compatible with Python 3.9 only; do not use Python 3.10+ features (including type hint syntax changes)
+7. **Use proper Python dependency management**:
+   - **For UCC builds (REQUIRED)**: Use a persistent virtual environment because `uv` doesn't support UCC's internal `pip install` calls:
      ```bash
-     # Run UCC with dependency
-     uv run --with splunk-add-on-ucc-framework ucc-gen build --source TA-myservice/package
+     cd TA-myservice
      
-     # Run validation script with requests
-     uv run --with requests python3 appinspect_validator.py package.tar.gz
-     
-     # Run icon generator with pillow
-     uv run --with pillow python3 generate_icon.py --text "TI"
-     ```
-   - **Fall back to venv + pip** if `uv` is not available:
-     ```bash
-     # Create and activate virtual environment
+     # Create and activate virtual environment (one-time)
      python3 -m venv .venv
      source .venv/bin/activate  # On Windows: .venv\Scripts\activate
      
-     # Install dependencies
-     pip install splunk-add-on-ucc-framework requests pillow
+     # Install UCC
+     pip install splunk-add-on-ucc-framework
      
-     # Run tools
-     ucc-gen build --source TA-myservice/package
-     python3 appinspect_validator.py package.tar.gz
+     # Build and package
+     ucc-gen build --source package --ta-version 1.0.0
+     ucc-gen package --path output/TA-myservice
+     ```
+   - **For other tools (optional)**: Use `uv run --with` for convenience without permanent installation:
+     ```bash
+     # Run AppInspect validation with requests
+     cd /path/to/repo/root
+     uv run --with requests python3 .github/skills/splunk-appinspect/appinspect_validator.py TA-myservice-1.0.0.tar.gz
+     
+     # Run icon generator with pillow (from TA directory)
+     cd TA-myservice
+     uv run --with pillow ../.github/skills/generate-splunk-app-icons/generate_icon.py --text "TI"
+     mkdir -p appserver/static
+     mv appIcon*.png appserver/static/  # Move, not copy, to avoid leaving artifacts
      ```
    - **Never install packages globally** with bare `pip install` - always use isolation
    - If updating requirements.txt, always ensure new requirements are added to a new line, not the end of the current final line
+7. **Keep add-on dependencies in sync**: when adding third-party imports in modular inputs or custom commands, add them to `package/lib/requirements.txt` so `ucc-gen build` vendors them into `output/<TA>/lib`.
+8. **Run skills from repo root**: skill scripts live under the repository root at `.github/skills/`, not inside generated TA folders.
+9. **Re-open changed files**: if the system reports a file was modified (especially `globalConfig.json`), re-read it before making edits or building.
 
 ## Next Steps for Developer
 
-After receiving the generated TA:
+Advice to give the developer: after receiving the generated TA:
 1. Review the generated code and configuration
 2. Test in a Splunk development environment
 3. Refine based on specific requirements or edge cases

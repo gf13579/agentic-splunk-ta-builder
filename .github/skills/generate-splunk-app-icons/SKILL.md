@@ -5,15 +5,21 @@ description: Generates Splunk app icon sets based on customizable text, colors, 
 
 # Splunk App Icon Generator
 
-This skill generates a complete set of Splunk app icons with customizable styling.
+This skill generates a complete set of 4 Splunk app icons with customizable styling.
 
-## What it does
+## Usage
 
-Generates four PNG icon files required for Splunk app submissions:
-- `appIcon.png` (36×36)
-- `appIcon_2x.png` (72×72)
-- `appIconAlt.png` (36×36)
-- `appIconAlt_2x.png` (72×72)
+- Identify the TA's package/static folder path e.g. <repo_root>/TA-myservice/package/static
+- Run the generation script with the desired parameters, specifying the output directory (--output-dir) as identified TA's package/static path
+
+Example:
+
+```
+uv run --with pillow .github/skills/generate-splunk-app-icons/generate_icon.py --text "MS" --output-dir "TA-myservice/package/static"
+```
+
+**Never** use an output directory with **appserver/static** in the path - this not the correct location for app icons.
+
 
 ## Required Information
 
@@ -31,41 +37,9 @@ You may ask the user for these, or use the defaults:
 - **Border**: Whether to include a rounded border (default: yes)
 - **Border width**: Thickness on 0-100 scale (default: 8)
 
-## Usage
-
-When the user wants to generate Splunk app icons:
-
-1. **Required**: Provide the text to display (1-2 characters)
-	- If the app name or display name is known, infer a short 1-2 character label and proceed without prompting.
-	- If no reasonable default is available, ask the user.
-2. Optional: Ask if they want to customize colors or border
-3. Run the generation script with the provided parameters
-
-The icons will be created in the current working directory.
-
-## Example Commands
-
-Use `uv run --with pillow` to execute the script with automatic dependency management:
-
-```bash
-# Basic usage with required text parameter
-uv run --with pillow .github/skills/generate-splunk-app-icons/generate_icon.py --text "ML"
-
-# With custom colors
-uv run --with pillow .github/skills/generate-splunk-app-icons/generate_icon.py --text "CI" --bg "#2C3E50" --fg "#ECF0F1"
-
-# Without border
-uv run --with pillow .github/skills/generate-splunk-app-icons/generate_icon.py --text "DB" --no-border
-
-# Custom border width
-uv run --with pillow .github/skills/generate-splunk-app-icons/generate_icon.py --text "AP" --border-width 12
-```
-
 ## When to Use This Skill
 
 Invoke this skill when the user:
 - Mentions "Splunk app icon" or "Splunk app icons"
 - Wants to generate icons for a Splunk app
 - Needs appIcon.png files
-- Asks to create Splunk app graphics or assets
-- References Splunk AppInspect requirements for icons

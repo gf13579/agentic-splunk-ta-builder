@@ -230,5 +230,5 @@ validation*.html
 appinspect_report_*
 .DS_Store
 
-# temp hack
-TA-Threat-intel/
+# Generated content - assuming we're going to move our new TA elsewhere
+/TA-*/
