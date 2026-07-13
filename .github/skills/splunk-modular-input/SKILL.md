@@ -15,6 +15,15 @@ Use this skill when writing Python code for Splunk modular inputs in UCC-based a
 
 **Dependency note:** If you add third-party imports beyond the default UCC set, update `package/lib/requirements.txt` with each new package on its own line. UCC includes `requests`, `solnlib`, and `splunk-sdk` by default.
 
+## Requirement Levels
+
+Use the following interpretation rules when applying this skill:
+
+- **Schema requirements** are only the fields and structures required by UCC or Splunk.
+- **Architecture requirements** should come from `AGENTS.md` or the current task's design decisions.
+- **Patterns and examples** in this skill are defaults, not automatic requirements for every add-on.
+- If an example shows an `api_url` field or proxy helper, do not assume those are mandatory unless the add-on's architecture calls for them.
+
 ## Making changes to globalConfig.json
 
 Before writing any replacements to large json files like globalConfig.json, output the target structure as a code block and reason about which existing text it replaces in full.
@@ -23,7 +32,7 @@ Replace the entire object (e.g. "configuration") when possible to avoid syntax e
 
 ## Editing globalConfig.json for Account Parameters
 
-It's common for APIs to require credentials and base URLs. These should be added as configurable fields in the account configuration section of `globalConfig.json`. An example is provided below - where API URL has been added to the standard account fields created by the UCC init command:
+It's common for APIs to require credentials and base URLs. When the add-on must support variable endpoints, these should be added as configurable fields in the account configuration section of `globalConfig.json`. If the add-on targets one fixed vendor endpoint, a hard-coded base URL is acceptable if that decision is explicit and documented. An example is provided below where API URL has been added to the standard account fields created by the UCC init command:
 
 ```json
         "configuration": {
@@ -280,11 +289,11 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
 
 ## Handling API Base URLs
 
-API base URLs should be:
-1. **Configurable in globalConfig.json** (account configuration)
-2. **Retrieved from account settings** at runtime
+Decide base URL handling from the add-on architecture:
+1. **Configurable in globalConfig.json** and **retrieved from account settings** when the endpoint can vary by region, tenant, environment, on-prem deployment, or customer.
+2. **Hard-coded in the helper** only when the add-on targets one fixed vendor endpoint and that simplification is intentional.
 
-For example, if one base URL is required, add an `api_url` field to the account configuration:
+For example, if a configurable base URL is required, add an `api_url` field to the account configuration:
 ```json
 {
   "name": "account",
@@ -301,7 +310,7 @@ For example, if one base URL is required, add an `api_url` field to the account 
 }
 ```
 
-**Never** hard-code API URLs in the helper files.
+Do not hard-code API URLs when the endpoint is expected to vary across deployments.
 
 **Never** use a validator to require that URLs start with "https". http is fine.
 
@@ -354,7 +363,7 @@ See [conf_manager documentation](https://splunk.github.io/addonfactory-solutions
 
 ### Getting Proxy Settings
 
-Proxy configuration is stored in the app settings:
+Use this pattern only when the add-on exposes proxy settings and outbound requests are expected to honor them. Proxy configuration is typically stored in the app settings:
 
 ```python
 def get_proxy_config(session_key: str, addon_name: str) -> dict:

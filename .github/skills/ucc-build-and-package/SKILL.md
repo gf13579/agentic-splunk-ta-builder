@@ -14,6 +14,18 @@ Use this skill after UCC initialization and after all updates to `globalConfig.j
 - Any required dependencies are listed in `package/lib/requirements.txt`
 - `package/README.txt` is updated with add-on overview, setup instructions, modular input documentation (if applicable), custom search command usage examples (if applicable), and troubleshooting guidance
 
+## Versioning Before Build
+
+For a brand new add-on, use the intended initial version.
+
+For an existing add-on that is being updated:
+- Read `meta.version` from the current `globalConfig.json` and treat it as the baseline input.
+- Increment that version before building.
+- Pass the incremented value to `ucc-gen build --ta-version ...`.
+- Do not assume the task requires writing the incremented value back to `globalConfig.json` unless that is explicitly requested.
+
+If the task does not specify a versioning policy, use the smallest sensible increment for the change.
+
 ## Build
 Run from the TA root and always point `--source` to `package/`:
 
@@ -30,7 +42,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install splunk-add-on-ucc-framework
 
 # Build the add-on
-ucc-gen build --source package --ta-version 1.0.0
+ucc-gen build --source package --ta-version <incremented-version>
 ```
 
 Note: `ucc-gen build` may update `globalConfig.json` (for example, schema version). If the system reports the file changed, re-open it before making further edits.

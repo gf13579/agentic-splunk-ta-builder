@@ -177,7 +177,16 @@ Use these criteria to determine which TA components to build:
 ### Always Include:
 - **Configuration page** for account/credential management
 - **Logging configuration** for troubleshooting
-- **Proxy settings** if the API is accessed over the internet
+- **Proxy settings** when the add-on makes outbound HTTP(S) requests and the target environment may require egress through a proxy
+
+### Configuration Decision Rules
+
+Use these rules to decide whether account configuration must expose a base URL or proxy controls:
+
+- **Fixed SaaS endpoint**: hard-coding the vendor base URL is acceptable if the service uses one stable public endpoint and there is no customer-specific, regional, or on-prem variation. Document that choice in the add-on README.
+- **Variable endpoint**: expose a configurable `api_url` account field when the API base URL can differ by region, tenant, environment, deployment model, or customer.
+- **Proxy support**: expose proxy settings and honor them in outbound HTTP clients when the add-on is expected to run in environments that may require a proxy for internet access.
+- **No implied requirement from examples**: example code in individual skills may show `api_url` or proxy retrieval patterns even when they are optional for a specific add-on. Treat the decision rules above as the policy source.
 
 ## Success Criteria
 
@@ -246,6 +255,7 @@ This agent coordinates the following specialized skills:
 7. **Keep add-on dependencies in sync**: when adding third-party imports in modular inputs or custom commands, add them to `package/lib/requirements.txt` so `ucc-gen build` vendors them into `output/<TA>/lib`.
 8. **Run skills from repo root**: skill scripts live under the repository root at `.github/skills/`, not inside generated TA folders.
 9. **Re-open changed files**: if the system reports a file was modified (especially `globalConfig.json`), re-read it before making edits or building.
+10. **Derive update build versions from `globalConfig.json`**: when updating an existing TA, treat `meta.version` in the current `globalConfig.json` as the baseline input for versioning. Compute an incremented version from it and pass that incremented value to `ucc-gen build --ta-version ...`. Do not assume `globalConfig.json` itself should be modified unless the task explicitly asks for that.
 
 ## Next Steps for Developer
 
