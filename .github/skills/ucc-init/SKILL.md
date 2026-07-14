@@ -13,7 +13,8 @@ Use this skill when you need to initialize a new UCC-based TA after API/vendor a
 - Display name (e.g., `My Service Add-on for Splunk`)
 - Primary input name (used for `ucc-gen init`)
 - Auth scheme and credential fields
-- Whether proxy/logging pages are required (default: yes)
+- Logging is always required
+- Proxy tab is always required
 
 ## Scope
 This skill focuses on **UCC initialization and baseline configuration only**. It does not analyze API docs or decide which components to build.
@@ -40,8 +41,34 @@ Do not use `--addon-rest-root <rest_root>` unless the addon-name has underscores
 ### 3) Baseline globalConfig.json
 Ensure `globalConfig.json` exists and contains:
 - `meta` with name, displayName, version, apiVersion, restRoot
-- Configuration pages for account, proxy, and logging (unless explicitly excluded)
+- Configuration pages for account, proxy, and logging
 - Empty placeholders for inputs/customSearchCommand/alerts if they will be populated later
+
+Immediately after `ucc-gen init` generates `globalConfig.json` for the first time, update `pages.configuration.tabs` so the proxy tab is always present directly after the Account and Logging tabs:
+
+```json
+[
+  {
+    "name": "account"
+  },
+  {
+    "type": "loggingTab"
+  },
+  {
+    "type": "proxyTab"
+  }
+]
+```
+
+Use the minimal proxy definition from UCC:
+
+```json
+{
+  "type": "proxyTab"
+}
+```
+
+If the generated `tabs` array does not already match that order, rewrite it before any later skill modifies `globalConfig.json`.
 
 ### 4) Input helper stubs
 `ucc-gen init` creates a single `*_helper.py` for the primary input. If multiple inputs are required, create helper stubs by copying the generated helper file and adjusting the filename to match each input name. This keeps the modular input skill focused on modifying existing helpers rather than creating new files.

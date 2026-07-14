@@ -177,16 +177,16 @@ Use these criteria to determine which TA components to build:
 ### Always Include:
 - **Configuration page** for account/credential management
 - **Logging configuration** for troubleshooting
-- **Proxy settings** when the add-on makes outbound HTTP(S) requests and the target environment may require egress through a proxy
+- **Proxy tab** in `pages.configuration.tabs` using the minimal UCC definition `{ "type": "proxyTab" }`, placed immediately after the Account and Logging tabs
 
 ### Configuration Decision Rules
 
-Use these rules to decide whether account configuration must expose a base URL or proxy controls:
+Use these rules to decide whether account configuration must expose a base URL and how proxy controls should behave:
 
 - **Fixed SaaS endpoint**: hard-coding the vendor base URL is acceptable if the service uses one stable public endpoint and there is no customer-specific, regional, or on-prem variation. Document that choice in the add-on README.
 - **Variable endpoint**: expose a configurable `api_url` account field when the API base URL can differ by region, tenant, environment, deployment model, or customer.
-- **Proxy support**: expose proxy settings and honor them in outbound HTTP clients when the add-on is expected to run in environments that may require a proxy for internet access.
-- **No implied requirement from examples**: example code in individual skills may show `api_url` or proxy retrieval patterns even when they are optional for a specific add-on. Treat the decision rules above as the policy source.
+- **Proxy support**: always include the proxy tab in `globalConfig.json`. For modular inputs and other outbound HTTP clients, read proxy settings from app configuration and honor them when `proxy_enabled` is set.
+- **No implied requirement from examples**: example code in individual skills may show `api_url` fields that are optional for a specific add-on, but proxy tab inclusion and proxy-aware outbound clients are the default policy.
 
 ## Success Criteria
 

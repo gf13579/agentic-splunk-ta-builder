@@ -22,7 +22,8 @@ Use the following interpretation rules when applying this skill:
 - **Schema requirements** are only the fields and structures required by UCC or Splunk.
 - **Architecture requirements** should come from `AGENTS.md` or the current task's design decisions.
 - **Patterns and examples** in this skill are defaults, not automatic requirements for every add-on.
-- If an example shows an `api_url` field or proxy helper, do not assume those are mandatory unless the add-on's architecture calls for them.
+- If an example shows an `api_url` field, do not assume that field is mandatory unless the add-on's architecture calls for it.
+- Proxy handling is the exception: generated add-ons should always include the proxy tab in `globalConfig.json`, and outbound HTTP clients in modular inputs should honor proxy settings when users enable them.
 
 ## Making changes to globalConfig.json
 
@@ -363,7 +364,7 @@ See [conf_manager documentation](https://splunk.github.io/addonfactory-solutions
 
 ### Getting Proxy Settings
 
-Use this pattern only when the add-on exposes proxy settings and outbound requests are expected to honor them. Proxy configuration is typically stored in the app settings:
+Use this pattern for modular inputs that make outbound HTTP requests. The generated add-on should always expose proxy settings in `globalConfig.json`, and helper code should honor them when enabled. Proxy configuration is typically stored in the app settings:
 
 ```python
 def get_proxy_config(session_key: str, addon_name: str) -> dict:
@@ -383,6 +384,8 @@ def get_proxy_config(session_key: str, addon_name: str) -> dict:
         pass
     return {}
 ```
+
+Call `get_proxy_config()` near the start of `stream_events()` and pass the result into your HTTP client/session builder.
 
 ## Logging
 
@@ -474,7 +477,8 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
             logger.info(f"Starting collection for {normalized_input_name}")
             
             # Fetch all available data
-            session = build_session()
+            proxy_config = get_proxy_config(session_key, ADDON_NAME)
+            session = build_session(proxy_config)
             response = session.get(
                 f"{api_url}/v1/events",
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -542,7 +546,9 @@ def build_session(proxy_config: dict = None) -> requests.Session:
 def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
     for input_name, input_item in inputs.inputs.items():
         try:
-            session = build_session()
+            session_key = inputs.metadata["session_key"]
+            proxy_config = get_proxy_config(session_key, ADDON_NAME)
+            session = build_session(proxy_config)
             headers = {"Authorization": f"Bearer {api_key}"}
             
             response = session.get(
